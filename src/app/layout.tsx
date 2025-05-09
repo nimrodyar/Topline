@@ -1,18 +1,12 @@
 'use client'
 
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-import './globals.css'
+import { Inter } from "next/font/google"
+import "./globals.css"
 import { QueryClient, QueryClientProvider } from "react-query"
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ["latin"] })
 
 const queryClient = new QueryClient()
-
-export const metadata: Metadata = {
-  title: 'Topline - Smart News Aggregator',
-  description: 'Your personalized news aggregator with smart content optimization',
-}
 
 export default function RootLayout({
   children,
@@ -20,7 +14,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="he" dir="rtl">
+    <html lang="en">
+      <head>
+        <title>Topline News</title>
+        <meta name="description" content="Your source for the latest news" />
+      </head>
       <body className={inter.className}>
         <QueryClientProvider client={queryClient}>
           {children}
