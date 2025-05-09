@@ -13,11 +13,6 @@
     }
   ],
   "env": {
-    "DATABASE_URL": "@database_url",
-    "NEWS_API_KEY": "0ee8ffe339ff499d95e48ba8d2441b0d",
-    "TWITTER_API_KEY": "@twitter_api_key",
-    "TWITTER_API_SECRET": "@twitter_api_secret",
-    "TWITTER_ACCESS_TOKEN": "@twitter_access_token",
-    "TWITTER_ACCESS_TOKEN_SECRET": "@twitter_access_token_secret"
+    "NEWS_API_KEY": "0ee8ffe339ff499d95e48ba8d2441b0d"
   }
 } 
