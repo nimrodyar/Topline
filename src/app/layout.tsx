@@ -2,11 +2,14 @@
 
 import { Inter } from "next/font/google"
 import "./globals.css"
-import { QueryClient, QueryClientProvider } from "react-query"
+import { Providers } from "./providers"
 
 const inter = Inter({ subsets: ["latin"] })
 
-const queryClient = new QueryClient()
+export const metadata = {
+  title: 'Topline News',
+  description: 'Your source for the latest news',
+}
 
 export default function RootLayout({
   children,
@@ -15,14 +18,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <title>Topline News</title>
-        <meta name="description" content="Your source for the latest news" />
-      </head>
       <body className={inter.className}>
-        <QueryClientProvider client={queryClient}>
+        <Providers>
           {children}
-        </QueryClientProvider>
+        </Providers>
       </body>
     </html>
   )

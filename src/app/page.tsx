@@ -26,13 +26,52 @@ export default function Home() {
     triggerOnce: true,
   });
 
-  const { data: newsItems, isLoading } = useQuery<NewsItem[]>(
+  const { data: newsItems, isLoading, error } = useQuery<NewsItem[]>(
     ['news', selectedCategory],
     async () => {
-      const response = await axios.get(`/api/news?category=${selectedCategory}`);
-      return response.data;
+      try {
+        const response = await axios.get(`/api/news?category=${selectedCategory}`);
+        return response.data;
+      } catch (error) {
+        console.error("Error fetching news:", error);
+        return [];
+      }
+    },
+    {
+      initialData: [],
+      retry: false,
     }
   );
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-100 p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="animate-pulse space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="bg-white p-6 rounded-lg shadow-md">
+                <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-100 p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">Error Loading News</h2>
+            <p className="text-gray-600">Please try again later.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -72,9 +111,9 @@ export default function Home() {
 
       {/* News Feed */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {isLoading ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        {newsItems?.length === 0 ? (
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <p className="text-gray-600">No news items available at the moment.</p>
           </div>
         ) : (
           <div className="space-y-6">
