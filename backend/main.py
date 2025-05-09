@@ -1,16 +1,7 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
 from typing import List, Optional
-import models
-import schemas
-from database import SessionLocal, engine
 from feed_aggregator import FeedAggregator
-from analytics import EngagementAnalyzer
-from content_optimizer import ContentOptimizer
-
-# Create database tables
-models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Topline News Aggregator")
 
@@ -23,46 +14,44 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Initialize feed aggregator
+feed_aggregator = FeedAggregator()
 
 @app.get("/")
 async def root():
     return {"message": "Welcome to Topline News Aggregator API"}
 
-@app.get("/api/news", response_model=List[schemas.NewsItem])
-async def get_news(
-    category: Optional[str] = None,
-    limit: int = 20,
-    offset: int = 0,
-    db: Session = Depends(get_db)
-):
+@app.get("/api/news")
+async def get_news(category: Optional[str] = None):
     """
     Get news items with optional category filtering
     """
     try:
-        news_items = models.NewsItem.get_news(db, category, limit, offset)
+        data = await feed_aggregator.get_latest_data()
+        news_items = data['news']
+        
+        if category and category != 'all':
+            news_items = [item for item in news_items if item['category'] == category]
+        
         return news_items
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/news/{news_id}", response_model=schemas.NewsItemDetail)
-async def get_news_detail(
-    news_id: str,
-    db: Session = Depends(get_db)
-):
+@app.get("/api/news/{news_id}")
+async def get_news_detail(news_id: str):
     """
     Get detailed information about a specific news item
     """
     try:
-        news_item = models.NewsItem.get_by_id(db, news_id)
+        data = await feed_aggregator.get_latest_data()
+        news_items = data['news']
+        
+        # Find the news item by URL (using URL as ID)
+        news_item = next((item for item in news_items if item['url'] == news_id), None)
+        
         if not news_item:
             raise HTTPException(status_code=404, detail="News item not found")
+        
         return news_item
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -86,49 +75,23 @@ async def get_categories():
     }
 
 @app.get("/api/trending")
-async def get_trending_news(
-    db: Session = Depends(get_db)
-):
+async def get_trending_news():
     """
-    Get trending news based on engagement metrics
+    Get trending news based on Google Trends
     """
     try:
-        analyzer = EngagementAnalyzer(db)
-        trending_news = analyzer.get_trending_news()
-        return trending_news
+        data = await feed_aggregator.get_latest_data()
+        return data['trends']
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/aggregate")
-async def aggregate_news(
-    db: Session = Depends(get_db)
-):
+async def aggregate_news():
     """
-    Aggregate news from all sources (RSS feeds, News API, Twitter trends, Google trends)
+    Get all news and trends
     """
     try:
-        aggregator = FeedAggregator(db)
-        aggregated_data = await aggregator.aggregate_all_sources()
-        return aggregated_data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/social-trends")
-async def get_social_trends(
-    db: Session = Depends(get_db)
-):
-    """
-    Get trending topics from social media (Twitter and Google Trends)
-    """
-    try:
-        aggregator = FeedAggregator(db)
-        twitter_trends = await aggregator.fetch_twitter_trends()
-        google_trends = await aggregator.fetch_google_trends()
-        
-        return {
-            "twitter_trends": twitter_trends,
-            "google_trends": google_trends
-        }
+        return await feed_aggregator.get_latest_data()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

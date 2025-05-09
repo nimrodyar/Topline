@@ -1,11 +1,8 @@
 import feedparser
-import tweepy
 from pytrends.request import TrendReq
 from typing import List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
-from sqlalchemy.orm import Session
-import models
 import os
 from dotenv import load_dotenv
 import requests
@@ -20,23 +17,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class FeedAggregator:
-    def __init__(self, db: Session):
-        self.db = db
-        
-        # Initialize Twitter client
-        self.twitter_client = tweepy.Client(
-            bearer_token=os.getenv("TWITTER_BEARER_TOKEN"),
-            consumer_key=os.getenv("TWITTER_API_KEY"),
-            consumer_secret=os.getenv("TWITTER_API_SECRET"),
-            access_token=os.getenv("TWITTER_ACCESS_TOKEN"),
-            access_token_secret=os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
-        )
-        
+    def __init__(self):
         # Initialize Google Trends client
         self.trends_client = TrendReq(hl='he-IL', tz=120)  # Hebrew language, Israel timezone
         
         # News API configuration
-        self.news_api_key = "0ee8ffe339ff499d95e48ba8d2441b0d"
+        self.news_api_key = os.getenv("NEWS_API_KEY", "0ee8ffe339ff499d95e48ba8d2441b0d")  # Fallback to existing key
         self.news_api_base_url = "https://newsapi.org/v2"
         
         # Configure RSS feeds for Israeli news sources with content selectors
@@ -106,6 +92,13 @@ class FeedAggregator:
             }
         }
 
+        # Cache for storing fetched data
+        self._cache = {
+            'news': [],
+            'trends': [],
+            'last_update': None
+        }
+
     async def fetch_full_content(self, url: str, source: str) -> Dict[str, Any]:
         """
         Fetch full article content from the source URL
@@ -153,7 +146,7 @@ class FeedAggregator:
             headlines_url = f"{self.news_api_base_url}/top-headlines"
             params = {
                 'apiKey': self.news_api_key,
-                'country': 'us',
+                'country': 'il',  # Israel
                 'pageSize': 20
             }
             
@@ -163,32 +156,22 @@ class FeedAggregator:
             
             news_items = []
             for article in data.get('articles', []):
-                # Check if article already exists
-                existing = self.db.query(models.NewsItem).filter_by(
-                    title=article['title'],
-                    source=article['source']['name']
-                ).first()
-                
-                if not existing:
-                    news_item = {
-                        'title': article['title'],
-                        'content': article['description'] or article['content'],
-                        'source': article['source']['name'],
-                        'category': self._detect_category(article['title'], article['description'] or ''),
-                        'original_url': article['url'],
-                        'published_at': datetime.fromisoformat(article['publishedAt'].replace('Z', '+00:00'))
-                    }
-                    
-                    db_item = models.NewsItem(**news_item)
-                    self.db.add(db_item)
-                    news_items.append(news_item)
+                news_item = {
+                    'title': article['title'],
+                    'content': article['description'] or article['content'],
+                    'source': article['source']['name'],
+                    'category': self._detect_category(article['title'], article['description'] or ''),
+                    'url': article['url'],
+                    'image_url': article['urlToImage'],
+                    'published_at': article['publishedAt'],
+                    'author': article['author']
+                }
+                news_items.append(news_item)
             
-            self.db.commit()
             return news_items
             
         except Exception as e:
             logger.error(f"Error fetching from News API: {str(e)}")
-            self.db.rollback()
             return []
 
     def _detect_category(self, title: str, content: str) -> str:
@@ -198,28 +181,28 @@ class FeedAggregator:
         # Hebrew and English keywords for category detection
         categories = {
             'politics': {
-                'he': ['פוליטי', 'ממשלה', 'כנסת', 'בחירות', 'קואליציה', 'אופוזיציה'],
-                'en': ['politics', 'government', 'election', 'parliament', 'coalition']
+                'he': ['פוליטי', 'ממשלה', 'כנסת', 'בחירות', 'מפלגה'],
+                'en': ['politics', 'government', 'election', 'party', 'minister']
             },
             'business': {
-                'he': ['כלכלה', 'בורסה', 'שוק', 'חברה', 'מניות', 'השקעות'],
-                'en': ['business', 'economy', 'market', 'stock', 'finance', 'investment']
+                'he': ['כלכלה', 'בורסה', 'שוק', 'השקעות', 'חברה'],
+                'en': ['business', 'economy', 'market', 'stock', 'company']
             },
             'technology': {
-                'he': ['טכנולוגיה', 'הייטק', 'חדשנות', 'דיגיטל', 'סטארט-אפ'],
-                'en': ['technology', 'tech', 'innovation', 'digital', 'startup']
+                'he': ['טכנולוגיה', 'הייטק', 'חדשנות', 'דיגיטל', 'תוכנה'],
+                'en': ['technology', 'tech', 'innovation', 'digital', 'software']
             },
             'sports': {
-                'he': ['ספורט', 'כדורגל', 'כדורסל', 'אולימפיאדה', 'ליגה'],
-                'en': ['sports', 'football', 'basketball', 'olympics', 'league']
+                'he': ['ספורט', 'כדורגל', 'כדורסל', 'תחרות', 'שחקן'],
+                'en': ['sports', 'football', 'basketball', 'game', 'player']
             },
             'entertainment': {
                 'he': ['בידור', 'תרבות', 'סרט', 'מוזיקה', 'טלוויזיה'],
-                'en': ['entertainment', 'culture', 'movie', 'music', 'television']
+                'en': ['entertainment', 'culture', 'movie', 'music', 'tv']
             },
             'health': {
-                'he': ['בריאות', 'רפואה', 'מחלה', 'טיפול', 'קורונה'],
-                'en': ['health', 'medical', 'disease', 'treatment', 'covid']
+                'he': ['בריאות', 'רפואה', 'מחלה', 'טיפול', 'חולה'],
+                'en': ['health', 'medical', 'disease', 'treatment', 'patient']
             },
             'science': {
                 'he': ['מדע', 'מחקר', 'חלל', 'פיזיקה', 'כימיה'],
@@ -228,23 +211,17 @@ class FeedAggregator:
         }
 
         text = (title + ' ' + content).lower()
-        max_matches = 0
-        detected_category = 'general'
-
+        
         for category, keywords in categories.items():
-            # Check both Hebrew and English keywords
-            matches = sum(1 for keyword in keywords['he'] if keyword in text)
-            matches += sum(1 for keyword in keywords['en'] if keyword in text)
-            
-            if matches > max_matches:
-                max_matches = matches
-                detected_category = category
-
-        return detected_category
+            if any(keyword in text for keyword in keywords['he']) or \
+               any(keyword in text for keyword in keywords['en']):
+                return category
+        
+        return 'general'
 
     async def fetch_rss_feeds(self) -> List[Dict[str, Any]]:
         """
-        Fetch and parse RSS feeds from configured sources
+        Fetch news from configured RSS feeds
         """
         news_items = []
         
@@ -252,103 +229,72 @@ class FeedAggregator:
             try:
                 feed = feedparser.parse(feed_info['url'])
                 
-                for entry in feed.entries[:10]:  # Get latest 10 entries from each feed
-                    # Check if article already exists
-                    existing = self.db.query(models.NewsItem).filter_by(
-                        title=entry.title,
-                        source=source
-                    ).first()
+                for entry in feed.entries[:10]:  # Get latest 10 entries
+                    # Fetch full content
+                    full_content = await self.fetch_full_content(entry.link, source)
                     
-                    if not existing:
-                        # Fetch full content
-                        full_content = await self.fetch_full_content(entry.link, source)
-                        
-                        news_item = {
-                            'title': entry.title,
-                            'content': full_content['content'] or entry.summary,
-                            'source': source,
-                            'category': self._detect_category(entry.title, full_content['content'] or entry.summary),
-                            'original_url': entry.link,
-                            'published_at': datetime(*entry.published_parsed[:6]) if hasattr(entry, 'published_parsed') else datetime.utcnow(),
-                            'image_url': full_content['image_url'],
-                            'author': full_content['author'],
-                            'source_attribution': {
-                                'name': source.upper(),
-                                'url': entry.link,
-                                'logo_url': f"/images/sources/{source.lower()}.png"
-                            }
-                        }
-                        
-                        db_item = models.NewsItem(**news_item)
-                        self.db.add(db_item)
-                        news_items.append(news_item)
-                
-                self.db.commit()
-                
+                    news_item = {
+                        'title': entry.title,
+                        'content': full_content['content'] or entry.description,
+                        'source': source,
+                        'category': self._detect_category(entry.title, entry.description),
+                        'url': entry.link,
+                        'image_url': full_content['image_url'],
+                        'published_at': entry.published,
+                        'author': full_content['author']
+                    }
+                    news_items.append(news_item)
+                    
             except Exception as e:
-                logger.error(f"Error fetching RSS feed from {source}: {str(e)}")
-                self.db.rollback()
+                logger.error(f"Error fetching RSS feed {source}: {str(e)}")
+                continue
         
         return news_items
 
-    async def fetch_twitter_trends(self, woeid: int = 23424852) -> List[Dict[str, Any]]:
-        """
-        Fetch trending topics from Twitter for Israel
-        woeid 23424852 is for Israel
-        """
-        try:
-            trends = self.twitter_client.get_place_trends(id=woeid)
-            return [
-                {
-                    'name': trend['name'],
-                    'tweet_volume': trend['tweet_volume'],
-                    'url': trend['url']
-                }
-                for trend in trends[0]
-            ]
-        except Exception as e:
-            logger.error(f"Error fetching Twitter trends: {str(e)}")
-            return []
-
     async def fetch_google_trends(self) -> List[Dict[str, Any]]:
         """
-        Fetch trending searches from Google Trends for Israel
+        Fetch trending topics from Google Trends for Israel
         """
         try:
             # Get real-time trending searches for Israel
-            trending_searches_df = self.trends_client.trending_searches(pn='IL')
+            self.trends_client.build_payload(kw_list=[''], timeframe='now 1-d')
+            trending_searches = self.trends_client.trending_searches(pn='israel')
             
-            # Get more details about top trends
             trends = []
-            for search_term in trending_searches_df[:10]:  # Get top 10 trends
-                self.trends_client.build_payload([search_term], geo='IL')
-                interest_over_time_df = self.trends_client.interest_over_time()
-                
-                if not interest_over_time_df.empty:
-                    trend_data = {
-                        'term': search_term,
-                        'interest_score': int(interest_over_time_df[search_term].mean()),
-                        'related_topics': self.trends_client.related_topics()[search_term]['top']
-                    }
-                    trends.append(trend_data)
+            for topic in trending_searches:
+                trend = {
+                    'topic': topic,
+                    'source': 'google_trends',
+                    'timestamp': datetime.now().isoformat()
+                }
+                trends.append(trend)
             
             return trends
             
         except Exception as e:
-            logger.error(f"Error fetching Google trends: {str(e)}")
+            logger.error(f"Error fetching Google Trends: {str(e)}")
             return []
 
-    async def aggregate_all_sources(self):
+    async def get_latest_data(self) -> Dict[str, Any]:
         """
-        Aggregate news and trends from all sources
+        Get latest data from cache or fetch new data if cache is expired
         """
-        news_items = await self.fetch_rss_feeds()
-        news_api_items = await self.fetch_news_api()
-        twitter_trends = await self.fetch_twitter_trends()
-        google_trends = await self.fetch_google_trends()
+        now = datetime.now()
         
-        return {
-            'news_items': news_items + news_api_items,
-            'twitter_trends': twitter_trends,
-            'google_trends': google_trends
-        } 
+        # Check if cache is expired (older than 3 minutes)
+        if (not self._cache['last_update'] or 
+            now - self._cache['last_update'] > timedelta(minutes=3)):
+            
+            # Fetch new data
+            rss_news = await self.fetch_rss_feeds()
+            news_api_news = await self.fetch_news_api()
+            trends = await self.fetch_google_trends()
+            
+            # Update cache
+            self._cache = {
+                'news': rss_news + news_api_news,
+                'trends': trends,
+                'last_update': now
+            }
+        
+        return self._cache 
