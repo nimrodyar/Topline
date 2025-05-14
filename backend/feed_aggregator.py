@@ -127,6 +127,23 @@ class FeedAggregator:
             'last_update': None
         }
 
+        # Human-readable source names
+        self.source_display_names = {
+            'ynet': 'Ynet',
+            'walla': 'Walla',
+            'mako': 'Mako',
+            'n12': 'N12',
+            'kan': 'Kan',
+            'haaretz': 'Haaretz',
+            'israelhayom': 'Israel Hayom',
+            'globes': 'Globes',
+            'calcalist': 'Calcalist',
+            'maariv': 'Maariv',
+            'sport5': 'Sport5',
+            'timesofisrael': 'Times of Israel',
+            'jpost': 'Jerusalem Post',
+        }
+
     def _extract_image_from_entry(self, entry):
         # Try media:content
         media_content = entry.get('media_content')
@@ -268,26 +285,32 @@ class FeedAggregator:
         try:
             feed = feedparser.parse(feed_info['url'])
             entries = feed.entries[:10]
-            # Fetch full content for first 3, use summary for the rest
             for idx, entry in enumerate(entries):
                 entry_image_url = self._extract_image_from_entry(entry)
+                # Always fallback to summary/description for content
+                content = getattr(entry, 'summary', '') or getattr(entry, 'description', '') or ''
+                # Use display name for source
+                display_source = self.source_display_names.get(source, source)
+                # Only fetch full content for first 3
                 if idx < 3:
                     try:
                         full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=6)
+                        if full_content['content']:
+                            content = full_content['content']
+                        if full_content['image_url']:
+                            entry_image_url = full_content['image_url']
                     except Exception:
-                        full_content = {'content': '', 'image_url': None, 'author': None}
-                else:
-                    full_content = {'content': getattr(entry, 'summary', '') or getattr(entry, 'description', ''), 'image_url': entry_image_url, 'author': None}
-                image_url = entry_image_url or full_content['image_url']
+                        pass
+                image_url = entry_image_url
                 news_item = {
-                    'title': entry.title,
-                    'content': full_content['content'] or getattr(entry, 'description', ''),
-                    'source': source,
-                    'category': self._detect_category(entry.title, getattr(entry, 'description', '')),
-                    'url': entry.link,
+                    'title': getattr(entry, 'title', ''),
+                    'content': content,
+                    'source': display_source,
+                    'category': self._detect_category(getattr(entry, 'title', ''), content),
+                    'url': getattr(entry, 'link', ''),
                     'image_url': image_url,
                     'published_at': getattr(entry, 'published', None),
-                    'author': full_content['author']
+                    'author': None
                 }
                 news_items.append(news_item)
         except Exception as e:
