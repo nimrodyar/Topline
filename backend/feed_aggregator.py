@@ -462,9 +462,9 @@ class FeedAggregator:
                     feed = feedparser.parse(url)
                     for entry in feed.entries[:5]:
                         image_url = None
-                        # First, try to fetch image from article page
+                        # First, try to fetch image from article page (1s timeout for speed)
                         try:
-                            full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=2)
+                            full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=1)
                             if full_content.get('image_url'):
                                 image_url = full_content.get('image_url')
                         except Exception:
