@@ -27,69 +27,97 @@ class FeedAggregator:
         
         # Configure RSS feeds for Israeli news sources with content selectors
         self.rss_feeds = {
-            'n12': {
-                'url': 'https://www.mako.co.il/rss/feed-news.xml',
+            'ynet': {
+                'url': 'https://www.ynet.co.il/Integration/StoryRss2.xml',
                 'category': 'general',
-                'content_selector': '.article-body',
-                'image_selector': '.article-image img',
-                'author_selector': '.author-name'
+                'content_selector': '.text14, .article-body, .main-content',  # Ynet uses .text14 for main text
+                'image_selector': '.main-image img, .article-image img',
+                'author_selector': '.author-name, .byline'
             },
             'walla': {
                 'url': 'https://rss.walla.co.il/feed/1',
                 'category': 'general',
-                'content_selector': '.article-content',
-                'image_selector': '.article-main-image img',
-                'author_selector': '.author-name'
+                'content_selector': '.article-content, .main-content',
+                'image_selector': '.article-main-image img, .main-image img',
+                'author_selector': '.author-name, .byline'
             },
             'mako': {
                 'url': 'https://www.mako.co.il/rss/feed-news.xml',
                 'category': 'general',
-                'content_selector': '.article-body',
-                'image_selector': '.article-image img',
-                'author_selector': '.author-name'
+                'content_selector': '.article-body, .main-content',
+                'image_selector': '.article-image img, .main-image img',
+                'author_selector': '.author-name, .byline'
             },
-            'ynet': {
-                'url': 'https://www.ynet.co.il/Integration/StoryRss2.xml',
+            'n12': {
+                'url': 'https://www.mako.co.il/rss/feed-news.xml',
                 'category': 'general',
-                'content_selector': '.text14',
-                'image_selector': '.main-image img',
-                'author_selector': '.author-name'
-            },
-            'jpost': {
-                'url': 'https://www.jpost.com/Rss/RssFeedsHeadlines.aspx',
-                'category': 'general',
-                'content_selector': '.article-text',
-                'image_selector': '.article-image img',
-                'author_selector': '.author-name'
-            },
-            'haaretz': {
-                'url': 'https://www.haaretz.co.il/cmlink/1.161',
-                'category': 'general',
-                'content_selector': '.article-body',
-                'image_selector': '.article-image img',
-                'author_selector': '.author-name'
-            },
-            'timesofisrael': {
-                'url': 'https://www.timesofisrael.com/feed/',
-                'category': 'general',
-                'content_selector': '.article-content',
-                'image_selector': '.article-image img',
-                'author_selector': '.author-name'
+                'content_selector': '.article-body, .main-content',
+                'image_selector': '.article-image img, .main-image img',
+                'author_selector': '.author-name, .byline'
             },
             'kan': {
                 'url': 'https://www.kan.org.il/feed/',
                 'category': 'general',
-                'content_selector': '.article-content',
-                'image_selector': '.article-image img',
-                'author_selector': '.author-name'
+                'content_selector': '.article-content, .main-content',
+                'image_selector': '.article-image img, .main-image img',
+                'author_selector': '.author-name, .byline'
             },
-            'glz': {
-                'url': 'https://www.glz.co.il/feed/',
+            'haaretz': {
+                'url': 'https://www.haaretz.co.il/cmlink/1.161',
                 'category': 'general',
-                'content_selector': '.article-content',
-                'image_selector': '.article-image img',
-                'author_selector': '.author-name'
-            }
+                'content_selector': '.article-body, .main-content',
+                'image_selector': '.article-image img, .main-image img',
+                'author_selector': '.author-name, .byline'
+            },
+            'israelhayom': {
+                'url': 'https://www.israelhayom.co.il/rss.xml',
+                'category': 'general',
+                'content_selector': '.article-content, .main-content',
+                'image_selector': '.main-image img, .article-image img',
+                'author_selector': '.author-name, .byline'
+            },
+            'globes': {
+                'url': 'https://www.globes.co.il/webservice/rss/mainfeed.xml',
+                'category': 'business',
+                'content_selector': '.article-body, .main-content',
+                'image_selector': '.main-image img, .article-image img',
+                'author_selector': '.author-name, .byline'
+            },
+            'calcalist': {
+                'url': 'https://www.calcalist.co.il/home/0,7340,L-8,00.xml',
+                'category': 'business',
+                'content_selector': '.article-content, .main-content',
+                'image_selector': '.main-image img, .article-image img',
+                'author_selector': '.author-name, .byline'
+            },
+            'maariv': {
+                'url': 'https://www.maariv.co.il/rssfeed/1',
+                'category': 'general',
+                'content_selector': '.article-content, .main-content',
+                'image_selector': '.main-image img, .article-image img',
+                'author_selector': '.author-name, .byline'
+            },
+            'sport5': {
+                'url': 'https://www.sport5.co.il/rss.aspx?FolderID=604',
+                'category': 'sports',
+                'content_selector': '.article-content, .main-content',
+                'image_selector': '.main-image img, .article-image img',
+                'author_selector': '.author-name, .byline'
+            },
+            'timesofisrael': {
+                'url': 'https://www.timesofisrael.com/feed/',
+                'category': 'general',
+                'content_selector': '.article-content, .main-content',
+                'image_selector': '.article-image img, .main-image img',
+                'author_selector': '.author-name, .byline'
+            },
+            'jpost': {
+                'url': 'https://www.jpost.com/Rss/RssFeedsHeadlines.aspx',
+                'category': 'general',
+                'content_selector': '.article-text, .main-content',
+                'image_selector': '.article-image img, .main-image img',
+                'author_selector': '.author-name, .byline'
+            },
         }
 
         # Cache for storing fetched data
@@ -98,6 +126,26 @@ class FeedAggregator:
             'trends': [],
             'last_update': None
         }
+
+    def _extract_image_from_entry(self, entry):
+        # Try media:content
+        media_content = entry.get('media_content')
+        if media_content and isinstance(media_content, list) and 'url' in media_content[0]:
+            return media_content[0]['url']
+        # Try enclosure
+        enclosure = entry.get('enclosures')
+        if enclosure and isinstance(enclosure, list) and 'href' in enclosure[0]:
+            return enclosure[0]['href']
+        # Try image
+        if 'image' in entry:
+            return entry['image']
+        # Try og:image in summary/detail
+        if 'summary_detail' in entry and 'og:image' in entry['summary_detail'].get('value', ''):
+            soup = BeautifulSoup(entry['summary_detail']['value'], 'html.parser')
+            og_image = soup.find('meta', property='og:image')
+            if og_image and og_image.get('content'):
+                return og_image['content']
+        return None
 
     async def fetch_full_content(self, url: str, source: str) -> Dict[str, Any]:
         """
@@ -119,6 +167,16 @@ class FeedAggregator:
                         # Extract image
                         image_element = soup.select_one(feed_info['image_selector'])
                         image_url = image_element.get('src') if image_element else None
+                        # Try og:image meta tag if not found
+                        if not image_url:
+                            og_image = soup.find('meta', property='og:image')
+                            if og_image and og_image.get('content'):
+                                image_url = og_image['content']
+                        # As a last resort, try first <img> in article body
+                        if not image_url:
+                            first_img = soup.find('img')
+                            if first_img and first_img.get('src'):
+                                image_url = first_img['src']
                         
                         # Extract author
                         author_element = soup.select_one(feed_info['author_selector'])
@@ -230,8 +288,12 @@ class FeedAggregator:
                 feed = feedparser.parse(feed_info['url'])
                 
                 for entry in feed.entries[:10]:  # Get latest 10 entries
+                    # Try to extract image from RSS entry first
+                    entry_image_url = self._extract_image_from_entry(entry)
                     # Fetch full content
                     full_content = await self.fetch_full_content(entry.link, source)
+                    # Prefer RSS image, fallback to full_content image
+                    image_url = entry_image_url or full_content['image_url']
                     
                     news_item = {
                         'title': entry.title,
@@ -239,7 +301,7 @@ class FeedAggregator:
                         'source': source,
                         'category': self._detect_category(entry.title, entry.description),
                         'url': entry.link,
-                        'image_url': full_content['image_url'],
+                        'image_url': image_url,
                         'published_at': entry.published,
                         'author': full_content['author']
                     }
