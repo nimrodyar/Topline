@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 
 interface NewsItem {
@@ -41,11 +41,11 @@ function NewsCard({ item, categoryColor }: { item: NewsItem; categoryColor: stri
   const fallbackImg = '/fallback-news.gif';
   const [imgError, setImgError] = useState(false);
   return (
-    <div className="relative rounded-2xl overflow-hidden shadow-xl group transition-transform hover:scale-105 bg-gray-200 border border-accent/30 aspect-[4/3] flex flex-col justify-end max-w-xs mx-auto">
+    <div className="relative rounded-2xl overflow-hidden shadow-xl group transition-transform hover:scale-105 hover:shadow-2xl bg-gray-200 border border-accent/30 aspect-[4/3] flex flex-col justify-end max-w-xs mx-auto cursor-pointer">
       <img
         src={imgError || !item.image_url ? fallbackImg : item.image_url}
         alt={item.title}
-        className="absolute inset-0 w-full h-full object-cover object-center z-0 transition-opacity duration-300 bg-gray-200 border-b-4 border-accent"
+        className="absolute inset-0 w-full h-full object-cover object-center z-0 transition-transform duration-300 bg-gray-200 border-b-4 border-accent group-hover:scale-110"
         onError={() => setImgError(true)}
         style={{ minHeight: 0 }}
       />
@@ -67,6 +67,40 @@ function NewsCard({ item, categoryColor }: { item: NewsItem; categoryColor: stri
   );
 }
 
+function BackToTopButton() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 300);
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  return (
+    <button
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      className={`fixed bottom-8 right-8 z-50 bg-accent text-bg p-3 rounded-full shadow-lg transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      aria-label="Back to top"
+    >
+      ↑
+    </button>
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="flex flex-wrap justify-center gap-8 mt-10">
+      {[...Array(6)].map((_, i) => (
+        <div key={i} className="relative rounded-2xl overflow-hidden shadow-xl bg-gray-200 border border-accent/30 aspect-[4/3] max-w-xs w-full animate-pulse">
+          <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+          <div className="absolute top-4 left-0 w-full flex flex-col items-center px-4">
+            <div className="h-6 w-3/4 bg-gray-300 rounded mb-2" />
+            <div className="h-4 w-1/2 bg-gray-300 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Home() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [trending, setTrending] = useState<NewsItem[]>([]);
@@ -75,6 +109,7 @@ export default function Home() {
   const [now, setNow] = useState(new Date());
   const [newsError, setNewsError] = useState<string | null>(null);
   const [trendingError, setTrendingError] = useState<string | null>(null);
+  const categoryBarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -127,11 +162,19 @@ export default function Home() {
       className="min-h-screen bg-gradient-to-br from-bg via-[#202a3a] to-[#232d3e] text-text font-main flex flex-col items-center justify-start px-2 sm:px-0"
       dir="rtl"
     >
+      {/* Global smooth scroll */}
+      <style jsx global>{`
+        html { scroll-behavior: smooth; }
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+      `}</style>
       {/* Header */}
       <header className="w-full max-w-2xl mx-auto sticky top-0 z-50 bg-bg/80 backdrop-blur border-b border-accent py-3 px-2 flex flex-col items-center shadow-lg rounded-b-2xl">
         <img src="/logo.png" alt="Topline Logo" className="h-20 w-auto mb-1 drop-shadow-lg" />
-        {/* Categories */}
-        <nav className="w-full flex flex-wrap justify-center gap-1 mt-2">
+        {/* Sticky Category Bar */}
+        <nav ref={categoryBarRef} className="w-full flex flex-wrap justify-center gap-1 mt-2 sticky top-0 z-40 bg-bg/80 backdrop-blur border-b border-accent py-2">
           {CATEGORIES.map((cat) => (
             <button
               key={cat.key}
@@ -163,13 +206,18 @@ export default function Home() {
           data-ad-slot="1234567890"></ins> */}
       </aside>
 
-      {/* Trending Section as Grid (identical to news grid) */}
-      <section className="w-full max-w-6xl mx-auto mt-10 mb-8">
+      {/* Section Divider: Trending */}
+      <div className="w-full flex items-center my-8">
+        <div className="flex-grow border-t border-accent/40" />
+        <span className="mx-4 text-accent text-lg font-bold">הכי חם עכשיו</span>
+        <div className="flex-grow border-t border-accent/40" />
+      </div>
+      {/* Trending Section as Grid */}
+      <section className="w-full max-w-6xl mx-auto mb-8">
         {trendingError ? (
           <div className="text-center text-red-400 text-lg">שגיאה בטעינת טרנדים: {trendingError}</div>
         ) : trending.length > 0 && (
           <div>
-            <h2 className="text-2xl font-bold text-accent mb-4 text-center">הכי חם עכשיו</h2>
             <div className="flex flex-wrap justify-center gap-8">
               {trending.slice(0, 3).map((item, idx) => (
                 <NewsCard key={item.url + idx} item={item} categoryColor={categoryColors[item.category] || categoryColors['all']} />
@@ -179,12 +227,18 @@ export default function Home() {
         )}
       </section>
 
+      {/* Section Divider: News Feed */}
+      <div className="w-full flex items-center my-8">
+        <div className="flex-grow border-t border-accent/40" />
+        <span className="mx-4 text-accent text-lg font-bold">חדשות אחרונות</span>
+        <div className="flex-grow border-t border-accent/40" />
+      </div>
       {/* News Feed as Grid */}
       <main className="flex-1 w-full max-w-6xl mx-auto pb-8">
         {newsError ? (
           <div className="text-center text-red-400 text-lg mt-16">שגיאה בטעינת חדשות: {newsError}</div>
         ) : loading ? (
-          <div className="text-center text-accent text-2xl mt-16 animate-pulse">טוען חדשות...</div>
+          <LoadingSkeleton />
         ) : filteredNews.length === 0 ? (
           <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
         ) : (
@@ -195,6 +249,7 @@ export default function Home() {
           </div>
         )}
       </main>
+      <BackToTopButton />
 
       {/* Taboola widget slot - below news grid */}
       <section className="w-full max-w-4xl mx-auto my-8">
