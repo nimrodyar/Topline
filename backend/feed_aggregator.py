@@ -462,17 +462,22 @@ class FeedAggregator:
                     feed = feedparser.parse(url)
                     for entry in feed.entries[:5]:
                         image_url = None
-                        # First, try to fetch image from article page (1s timeout for speed)
+                        # First, try to fetch image from article page (3s timeout for debug)
                         try:
-                            full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=1)
+                            full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=3)
                             if full_content.get('image_url'):
                                 image_url = full_content.get('image_url')
-                        except Exception:
-                            pass
+                                logger.info(f"[TRENDING] Article page image found for {entry.link} ({source}): {image_url}")
+                        except Exception as e:
+                            logger.warning(f"[TRENDING] Failed to fetch article image for {entry.link} ({source}): {e}")
                         # If not found, use image from RSS entry
                         if not image_url:
                             entry_image_url = self._extract_image_from_entry(entry)
                             image_url = entry_image_url
+                            if image_url:
+                                logger.info(f"[TRENDING] RSS entry image used for {entry.link} ({source}): {image_url}")
+                        if not image_url:
+                            logger.warning(f"[TRENDING] No image found for {entry.link} ({source})")
                         trending_news.append({
                             'title': entry.title,
                             'url': entry.link,
