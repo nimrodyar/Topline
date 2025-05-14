@@ -437,8 +437,6 @@ class FeedAggregator:
             data = response.json()
             for article in data.get('articles', []):
                 image_url = article.get('urlToImage')
-                if not image_url:
-                    image_url = article.get('urlToImage')
                 trending_news.append({
                     'title': article['title'],
                     'url': article['url'],
@@ -463,14 +461,17 @@ class FeedAggregator:
                     feed = feedparser.parse(url)
                     for entry in feed.entries[:5]:
                         image_url = None
+                        # Try to fetch image from RSS entry
+                        entry_image_url = self._extract_image_from_entry(entry)
                         # Try to fetch image from article page
                         try:
                             full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=6)
-                            image_url = full_content.get('image_url')
+                            if full_content.get('image_url'):
+                                image_url = full_content.get('image_url')
                         except Exception:
                             pass
                         if not image_url:
-                            image_url = article.get('urlToImage')
+                            image_url = entry_image_url
                         trending_news.append({
                             'title': entry.title,
                             'url': entry.link,
