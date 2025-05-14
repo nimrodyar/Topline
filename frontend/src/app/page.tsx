@@ -46,21 +46,24 @@ function NewsCard({ item }: { item: NewsItem }) {
       className={hasImage ? "news-card-hover" : "news-card-noimg"}
       style={{
         position: 'relative',
-        borderRadius: '12px',
+        borderRadius: '16px',
         overflow: 'hidden',
-        margin: '12px',
-        minWidth: hasImage ? '220px' : '100%',
+        margin: '16px',
+        minWidth: hasImage ? '260px' : '100%',
         maxWidth: hasImage ? '320px' : '100%',
-        minHeight: hasImage ? '200px' : '120px',
+        width: hasImage ? '300px' : '100%',
+        minHeight: hasImage ? '240px' : '120px',
+        height: hasImage ? '340px' : '120px',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
         alignItems: 'center',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.10)',
         background: hasImage ? '#eee' : '#232d3e',
-        width: hasImage ? undefined : 'calc(100% - 24px)',
         cursor: item.url ? 'pointer' : 'default',
         textDecoration: 'none',
+        padding: '0',
+        transition: 'box-shadow 0.2s',
       }}
     >
       {hasImage && (
@@ -75,9 +78,9 @@ function NewsCard({ item }: { item: NewsItem }) {
               width: '100%',
               height: '100%',
               objectFit: 'cover',
-              filter: 'blur(6px) brightness(0.65)',
+              filter: 'blur(8px) brightness(0.65)',
               zIndex: 0,
-              transition: 'filter 0.3s',
+              transition: 'filter 0.4s cubic-bezier(.4,0,.2,1)',
             }}
           />
           {/* Dark overlay for readability */}
@@ -89,25 +92,30 @@ function NewsCard({ item }: { item: NewsItem }) {
           position: 'relative',
           zIndex: 2,
           color: '#fff',
-          padding: hasImage ? '18px 16px 16px 16px' : '24px 0',
+          padding: hasImage ? '24px 18px 18px 18px' : '24px 0',
           textShadow: '0 2px 8px #000',
           width: '100%',
           textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100%',
         }}
       >
-        <div style={{ fontWeight: 'bold', fontSize: '1.1em', marginBottom: '8px' }}>
+        <div style={{ fontWeight: 'bold', fontSize: '1.15em', marginBottom: '10px', lineHeight: 1.2 }}>
           {item.title || <span style={{ color: 'red' }}>No Title</span>}
         </div>
-        <div style={{ color: '#ffd700', fontSize: '0.95em' }}>
+        <div style={{ color: '#ffd700', fontSize: '1em', marginBottom: '6px' }}>
           {item.source || <span style={{ color: 'red' }}>No Source</span>}
         </div>
-        <div style={{ color: '#eee', fontSize: '0.8em', marginTop: '8px' }}>
+        <div style={{ color: '#eee', fontSize: '0.85em', marginTop: '8px' }}>
           {item.url ? <span style={{ color: '#fff', textDecoration: 'underline' }}>Read more</span> : 'No URL'}
         </div>
       </div>
       <style jsx>{`
         .news-card-hover .news-card-img {
-          filter: blur(6px) brightness(0.65);
+          filter: blur(8px) brightness(0.65);
         }
         .news-card-hover:hover .news-card-img {
           filter: brightness(0.65);
@@ -355,7 +363,16 @@ export default function Home() {
         ) : safeFilteredNews.length === 0 ? (
           <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            alignItems: 'stretch',
+            gap: '16px',
+            padding: '0 8px',
+            width: '100%',
+            boxSizing: 'border-box',
+          }}>
             {safeFilteredNews.slice(0, 21).flatMap((item, idx) => {
               const elements = [];
               if (idx > 0 && idx % 8 === 0) elements.push(<AdCard key={`ad-${idx}`} />);
