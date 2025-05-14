@@ -40,6 +40,9 @@ def translate_to_english(text: str) -> str:
         logger.error(f"Translation failed: {e}")
         return text
 
+# In-memory cache for AI images
+AI_IMAGE_CACHE = {}
+
 class FeedAggregator:
     def __init__(self):
         # Initialize Google Trends client
@@ -223,38 +226,42 @@ class FeedAggregator:
         }
 
     async def fetch_news_api(self) -> List[Dict[str, Any]]:
-        """
-        Fetch news from News API
-        """
         try:
-            # Fetch top headlines
-            headlines_url = f"{self.news_api_base_url}/top-headlines"
-            params = {
-                'apiKey': self.news_api_key,
-                'country': 'il',  # Israel
-                'pageSize': 20
-            }
-            
-            response = requests.get(headlines_url, params=params)
-            response.raise_for_status()
-            data = response.json()
-            
             news_items = []
-            for article in data.get('articles', []):
-                news_item = {
-                    'title': article['title'],
-                    'content': article['description'] or article['content'],
-                    'source': article['source']['name'],
-                    'category': self._detect_category(article['title'], article['description'] or ''),
-                    'url': article['url'],
-                    'image_url': article['urlToImage'],
-                    'published_at': article['publishedAt'],
-                    'author': article['author']
+            from_date = (datetime.utcnow() - timedelta(days=3)).strftime('%Y-%m-%dT%H:%M:%SZ')
+            page = 1
+            max_pages = 3  # up to 300 items
+            while page <= max_pages:
+                headlines_url = f"{self.news_api_base_url}/top-headlines"
+                params = {
+                    'apiKey': self.news_api_key,
+                    'country': 'il',
+                    'pageSize': 100,
+                    'page': page,
+                    'from': from_date
                 }
-                news_items.append(news_item)
-            
+                response = requests.get(headlines_url, params=params)
+                response.raise_for_status()
+                data = response.json()
+                articles = data.get('articles', [])
+                if not articles:
+                    break
+                for article in articles:
+                    news_item = {
+                        'title': article['title'],
+                        'content': article['description'] or article['content'],
+                        'source': article['source']['name'],
+                        'category': self._detect_category(article['title'], article['description'] or ''),
+                        'url': article['url'],
+                        'image_url': article['urlToImage'],
+                        'published_at': article['publishedAt'],
+                        'author': article['author']
+                    }
+                    news_items.append(news_item)
+                if len(articles) < 100:
+                    break
+                page += 1
             return news_items
-            
         except Exception as e:
             logger.error(f"Error fetching from News API: {str(e)}")
             return []
@@ -308,14 +315,17 @@ class FeedAggregator:
         news_items = []
         try:
             feed = feedparser.parse(feed_info['url'])
-            entries = feed.entries[:10]
+            entries = feed.entries[:30]
+            three_days_ago = datetime.utcnow() - timedelta(days=3)
             for idx, entry in enumerate(entries):
+                published = getattr(entry, 'published_parsed', None)
+                if published:
+                    published_dt = datetime(*published[:6])
+                    if published_dt < three_days_ago:
+                        continue
                 entry_image_url = self._extract_image_from_entry(entry)
-                # Always fallback to summary/description for content
                 content = getattr(entry, 'summary', '') or getattr(entry, 'description', '') or ''
-                # Use display name for source
                 display_source = self.source_display_names.get(source, source)
-                # Only fetch full content for first 3
                 if idx < 3:
                     try:
                         full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=6)
@@ -325,9 +335,9 @@ class FeedAggregator:
                             entry_image_url = full_content['image_url']
                     except Exception:
                         pass
-                image_url = entry_image_url or full_content['image_url']
+                image_url = entry_image_url or (full_content['image_url'] if 'full_content' in locals() else None)
                 if not image_url:
-                    image_url = generate_ai_image(entry.title)
+                    image_url = generate_ai_image(entry.title, cache_key=getattr(entry, 'link', None))
                 news_item = {
                     'title': getattr(entry, 'title', ''),
                     'content': content,
@@ -476,9 +486,11 @@ class FeedAggregator:
 
         return trending_news
 
-def generate_ai_image(prompt: str) -> str:
+def generate_ai_image(prompt: str, cache_key: str = None) -> str:
     if not CLOUDFLARE_API_KEY:
         return None
+    if cache_key and cache_key in AI_IMAGE_CACHE:
+        return AI_IMAGE_CACHE[cache_key]
     prompt_en = translate_to_english(prompt)
     headers = {
         "Authorization": f"Bearer {CLOUDFLARE_API_KEY}",
@@ -499,8 +511,10 @@ def generate_ai_image(prompt: str) -> str:
     try:
         response = requests.post(CLOUDFLARE_ENDPOINT, headers=headers, json=payload, timeout=20)
         response.raise_for_status()
-        # Adjust this if the response format is different
-        return response.json()["result"]["image"]
+        image_url = response.json()["result"]["image"]
+        if cache_key:
+            AI_IMAGE_CACHE[cache_key] = image_url
+        return image_url
     except Exception as e:
         logger.error(f"AI image generation failed: {e}")
         return None 
