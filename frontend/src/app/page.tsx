@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
+import Head from 'next/head';
 
 interface NewsItem {
   title: string;
@@ -91,6 +92,47 @@ function NewsCard({ item }: { item: NewsItem }) {
         </div>
         <div style={{ color: '#eee', fontSize: '0.8em', marginTop: '8px' }}>
           {item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', textDecoration: 'underline' }}>Read more</a> : 'No URL'}
+        </div>
+      </div>
+      <style jsx>{`
+        .news-card-hover:hover .news-card-img {
+          filter: brightness(0.5) blur(6px);
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function AdCard() {
+  return (
+    <div
+      className="news-card-hover"
+      style={{
+        position: 'relative',
+        borderRadius: '12px',
+        overflow: 'hidden',
+        margin: '12px',
+        minWidth: '220px',
+        maxWidth: '320px',
+        minHeight: '200px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'flex-end',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+        background: '#eee',
+      }}
+    >
+      <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', background: 'linear-gradient(135deg, #232d3e 60%, #3ed6c1 100%)', opacity: 0.7, zIndex: 0 }} />
+      <div style={{ position: 'relative', zIndex: 1, color: '#fff', padding: '18px 16px 16px 16px', textShadow: '0 2px 8px #000', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <div style={{ fontWeight: 'bold', fontSize: '1.1em', marginBottom: '8px' }}>Sponsored</div>
+        <div style={{ width: '100%' }}>
+          <ins className="adsbygoogle"
+            style={{ display: 'block', width: '100%', height: '90px', minWidth: '200px' }}
+            data-ad-client="ca-pub-2254073111476495"
+            data-ad-slot="1234567890"
+            data-ad-format="auto"
+            data-full-width-responsive="true"
+          ></ins>
         </div>
       </div>
       <style jsx>{`
@@ -204,6 +246,9 @@ export default function Home() {
       className="min-h-screen bg-gradient-to-br from-bg via-[#202a3a] to-[#232d3e] text-text font-main flex flex-col items-center justify-start px-2 sm:px-0"
       dir="rtl"
     >
+      <Head>
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2254073111476495" crossOrigin="anonymous"></script>
+      </Head>
       {/* Global smooth scroll */}
       <style jsx global>{`
         html { scroll-behavior: smooth; }
@@ -285,9 +330,12 @@ export default function Home() {
           <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>
-            {safeFilteredNews.slice(0, 21).map((item, idx) => (
-              <NewsCard key={item.url + idx} item={item} />
-            ))}
+            {safeFilteredNews.slice(0, 21).flatMap((item, idx) => {
+              const elements = [];
+              if (idx > 0 && idx % 8 === 0) elements.push(<AdCard key={`ad-${idx}`} />);
+              elements.push(<NewsCard key={item.url + idx} item={item} />);
+              return elements;
+            })}
           </div>
         )}
       </main>
