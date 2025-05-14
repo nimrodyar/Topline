@@ -46,7 +46,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-bg text-text font-main flex flex-col">
+    <div className="min-h-screen bg-bg text-text font-main flex flex-col" dir="rtl">
       {/* Header */}
       <header className="w-full bg-bg border-b border-accent py-4 px-4 flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight text-accent">Topline</h1>
