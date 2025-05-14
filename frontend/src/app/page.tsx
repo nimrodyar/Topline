@@ -37,33 +37,27 @@ function truncateHebrewTitle(title: string, maxLength: number = 60): string {
   return truncated + '...';
 }
 
-// NewsCard component for both trending and news
-function NewsCard({ item, categoryColor }: { item: NewsItem; categoryColor: string }) {
-  const fallbackImg = '/fallback-news.gif';
-  const [imgError, setImgError] = useState(false);
+// Minimal NewsCard for debugging
+function NewsCard({ item }: { item: NewsItem }) {
   return (
-    <div className="relative rounded-2xl overflow-hidden shadow-xl group transition-transform hover:scale-105 hover:shadow-2xl bg-gray-200 border border-accent/30 aspect-[4/3] flex flex-col justify-end max-w-xs mx-auto cursor-pointer">
-      <img
-        src={imgError || !item.image_url ? fallbackImg : item.image_url}
-        alt={item.title}
-        className="absolute inset-0 w-full h-full object-cover object-center z-0 transition-transform duration-300 bg-gray-200 border-b-4 border-accent group-hover:scale-110"
-        onError={() => setImgError(true)}
-        style={{ minHeight: 0 }}
-      />
-      {/* Overlay for title and source, at the top */}
-      <div className="absolute top-0 left-0 w-full flex flex-col items-center bg-gradient-to-b from-black/90 via-black/60 to-transparent pt-4 pb-2 px-4 min-h-[80px] z-10">
-        <span className="w-full text-center text-xl font-bold text-white block mb-1 truncate" style={{ textShadow: '0 2px 8px #000' }}>
-          {truncateHebrewTitle(item.title)}
-        </span>
-        <div className={`mt-1 text-accent text-md bg-bg/80 px-3 py-1 rounded-full shadow ${categoryColor}`}>
-          {item.source}
-        </div>
+    <div style={{
+      border: '1px solid #ccc',
+      borderRadius: '8px',
+      padding: '16px',
+      margin: '8px',
+      background: '#fff',
+      minWidth: '220px',
+      maxWidth: '320px'
+    }}>
+      <div style={{ fontWeight: 'bold', fontSize: '1.1em', marginBottom: '8px' }}>
+        {item.title || <span style={{ color: 'red' }}>No Title</span>}
       </div>
-      {/* Debug overlay for image URL (visible on hover) */}
-      <div className="absolute left-2 bottom-2 z-30 text-xs text-white bg-black/70 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 select-all">
-        {item.image_url}
+      <div style={{ color: '#888', fontSize: '0.95em' }}>
+        {item.source || <span style={{ color: 'red' }}>No Source</span>}
       </div>
-      <a href={item.url} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-40" aria-label={item.title}></a>
+      <div style={{ color: '#aaa', fontSize: '0.8em', marginTop: '8px' }}>
+        {item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer">Read more</a> : 'No URL'}
+      </div>
     </div>
   );
 }
@@ -228,7 +222,7 @@ export default function Home() {
           <div>
             <div className="flex flex-wrap justify-center gap-8">
               {safeTrending.slice(0, 3).map((item, idx) => (
-                <NewsCard key={item.url + idx} item={item} categoryColor={categoryColors[item.category] || categoryColors['all']} />
+                <NewsCard key={item.url + idx} item={item} />
               ))}
             </div>
           </div>
@@ -250,9 +244,9 @@ export default function Home() {
         ) : safeFilteredNews.length === 0 ? (
           <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
         ) : (
-          <div className="flex flex-wrap justify-center gap-8">
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>
             {safeFilteredNews.slice(0, 21).map((item, idx) => (
-              <NewsCard key={item.url + idx} item={item} categoryColor={categoryColors[item.category] || categoryColors['all']} />
+              <NewsCard key={item.url + idx} item={item} />
             ))}
           </div>
         )}
