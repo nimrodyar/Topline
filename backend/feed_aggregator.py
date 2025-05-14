@@ -324,18 +324,17 @@ class FeedAggregator:
                     if published_dt < three_days_ago:
                         continue
                 entry_image_url = self._extract_image_from_entry(entry)
-                content = getattr(entry, 'summary', '') or getattr(entry, 'description', '') or ''
-                display_source = self.source_display_names.get(source, source)
-                if idx < 3:
+                image_url = entry_image_url
+                # Only fetch article page if RSS entry has no image
+                if not image_url:
                     try:
-                        full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=6)
-                        if full_content['content']:
-                            content = full_content['content']
-                        if full_content['image_url']:
-                            entry_image_url = full_content['image_url']
+                        full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=2)
+                        if full_content.get('image_url'):
+                            image_url = full_content.get('image_url')
                     except Exception:
                         pass
-                image_url = entry_image_url or (full_content['image_url'] if 'full_content' in locals() else None)
+                content = getattr(entry, 'summary', '') or getattr(entry, 'description', '') or ''
+                display_source = self.source_display_names.get(source, source)
                 news_item = {
                     'title': getattr(entry, 'title', ''),
                     'content': content,
