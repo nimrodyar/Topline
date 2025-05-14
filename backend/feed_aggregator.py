@@ -323,16 +323,18 @@ class FeedAggregator:
                     published_dt = datetime(*published[:6])
                     if published_dt < three_days_ago:
                         continue
-                entry_image_url = self._extract_image_from_entry(entry)
-                image_url = entry_image_url
-                # Only fetch article page if RSS entry has no image
+                image_url = None
+                # First, try to fetch image from article page
+                try:
+                    full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=2)
+                    if full_content.get('image_url'):
+                        image_url = full_content.get('image_url')
+                except Exception:
+                    pass
+                # If not found, use image from RSS entry
                 if not image_url:
-                    try:
-                        full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=2)
-                        if full_content.get('image_url'):
-                            image_url = full_content.get('image_url')
-                    except Exception:
-                        pass
+                    entry_image_url = self._extract_image_from_entry(entry)
+                    image_url = entry_image_url
                 content = getattr(entry, 'summary', '') or getattr(entry, 'description', '') or ''
                 display_source = self.source_display_names.get(source, source)
                 news_item = {
@@ -460,16 +462,16 @@ class FeedAggregator:
                     feed = feedparser.parse(url)
                     for entry in feed.entries[:5]:
                         image_url = None
-                        # Try to fetch image from RSS entry
-                        entry_image_url = self._extract_image_from_entry(entry)
-                        # Try to fetch image from article page
+                        # First, try to fetch image from article page
                         try:
-                            full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=6)
+                            full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=2)
                             if full_content.get('image_url'):
                                 image_url = full_content.get('image_url')
                         except Exception:
                             pass
+                        # If not found, use image from RSS entry
                         if not image_url:
+                            entry_image_url = self._extract_image_from_entry(entry)
                             image_url = entry_image_url
                         trending_news.append({
                             'title': entry.title,
