@@ -157,6 +157,10 @@ export default function Home() {
     science: 'bg-indigo-500 text-white',
   };
 
+  // Defensive fallback for news data
+  const safeFilteredNews = Array.isArray(filteredNews) ? filteredNews.filter(Boolean) : [];
+  const safeTrending = Array.isArray(trending) ? trending.filter(Boolean) : [];
+
   return (
     <div
       className="min-h-screen bg-gradient-to-br from-bg via-[#202a3a] to-[#232d3e] text-text font-main flex flex-col items-center justify-start px-2 sm:px-0"
@@ -216,10 +220,10 @@ export default function Home() {
       <section className="w-full max-w-6xl mx-auto mb-8">
         {trendingError ? (
           <div className="text-center text-red-400 text-lg">שגיאה בטעינת טרנדים: {trendingError}</div>
-        ) : trending.length > 0 && (
+        ) : safeTrending.length > 0 && (
           <div>
             <div className="flex flex-wrap justify-center gap-8">
-              {trending.slice(0, 3).map((item, idx) => (
+              {safeTrending.slice(0, 3).map((item, idx) => (
                 <NewsCard key={item.url + idx} item={item} categoryColor={categoryColors[item.category] || categoryColors['all']} />
               ))}
             </div>
@@ -239,11 +243,11 @@ export default function Home() {
           <div className="text-center text-red-400 text-lg mt-16">שגיאה בטעינת חדשות: {newsError}</div>
         ) : loading ? (
           <LoadingSkeleton />
-        ) : filteredNews.length === 0 ? (
+        ) : safeFilteredNews.length === 0 ? (
           <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
         ) : (
           <div className="flex flex-wrap justify-center gap-8">
-            {filteredNews.slice(0, 21).map((item, idx) => (
+            {safeFilteredNews.slice(0, 21).map((item, idx) => (
               <NewsCard key={item.url + idx} item={item} categoryColor={categoryColors[item.category] || categoryColors['all']} />
             ))}
           </div>
