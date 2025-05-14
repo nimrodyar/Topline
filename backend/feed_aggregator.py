@@ -408,11 +408,14 @@ class FeedAggregator:
             response.raise_for_status()
             data = response.json()
             for article in data.get('articles', []):
+                image_url = article.get('urlToImage')
+                if not image_url:
+                    image_url = generate_ai_image(article['title'])
                 trending_news.append({
                     'title': article['title'],
                     'url': article['url'],
                     'source': article['source']['name'],
-                    'image_url': article['urlToImage'],
+                    'image_url': image_url,
                     'published_at': article['publishedAt'],
                     'type': 'newsapi'
                 })
@@ -426,22 +429,32 @@ class FeedAggregator:
             'walla': 'https://rss.walla.co.il/feed/22',                     # Walla Most Read
             'n12': 'https://www.mako.co.il/rss/most-popular.xml'            # N12 Most Popular
         }
-        for source, url in most_read_feeds.items():
-            try:
-                feed = feedparser.parse(url)
-                for entry in feed.entries[:5]:
-                    trending_news.append({
-                        'title': entry.title,
-                        'url': entry.link,
-                        'source': source,
-                        'image_url': None,
-                        'published_at': entry.published if hasattr(entry, 'published') else None,
-                        'type': 'rss-most-read'
-                    })
-            except Exception as e:
-                logger.error(f"Error fetching most read feed for {source}: {str(e)}")
+        async with aiohttp.ClientSession() as session:
+            for source, url in most_read_feeds.items():
+                try:
+                    feed = feedparser.parse(url)
+                    for entry in feed.entries[:5]:
+                        image_url = None
+                        # Try to fetch image from article page
+                        try:
+                            full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=6)
+                            image_url = full_content.get('image_url')
+                        except Exception:
+                            pass
+                        if not image_url:
+                            image_url = generate_ai_image(entry.title)
+                        trending_news.append({
+                            'title': entry.title,
+                            'url': entry.link,
+                            'source': source,
+                            'image_url': image_url,
+                            'published_at': entry.published if hasattr(entry, 'published') else None,
+                            'type': 'rss-most-read'
+                        })
+                except Exception as e:
+                    logger.error(f"Error fetching most read feed for {source}: {str(e)}")
 
-        return trending_news 
+        return trending_news
 
 def generate_ai_image(prompt: str) -> str:
     if not CLOUDFLARE_API_KEY:
