@@ -10,6 +10,7 @@ interface NewsItem {
   image_url: string | null;
   published_at: string;
   type: string;
+  category: string;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://toplinebackend1.vercel.app';
@@ -36,7 +37,7 @@ function truncateHebrewTitle(title: string, maxLength: number = 60): string {
 }
 
 // NewsCard component for both trending and news
-function NewsCard({ item }: { item: NewsItem }) {
+function NewsCard({ item, categoryColor }: { item: NewsItem; categoryColor: string }) {
   const fallbackImg = '/fallback-news.gif';
   const [imgError, setImgError] = useState(false);
   return (
@@ -53,7 +54,7 @@ function NewsCard({ item }: { item: NewsItem }) {
         <span className="w-full text-center text-xl font-bold text-white block mb-1 truncate" style={{ textShadow: '0 2px 8px #000' }}>
           {truncateHebrewTitle(item.title)}
         </span>
-        <div className="mt-1 text-accent text-md bg-bg/80 px-3 py-1 rounded-full shadow">
+        <div className={`mt-1 text-accent text-md bg-bg/80 px-3 py-1 rounded-full shadow ${categoryColor}`}>
           {item.source}
         </div>
       </div>
@@ -104,32 +105,38 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
+  // Filter news by selected category
+  const filteredNews = selectedCategory === 'all'
+    ? news
+    : news.filter((item) => item.category === selectedCategory);
+
+  // Color map for categories
+  const categoryColors: Record<string, string> = {
+    all: 'bg-accent text-bg',
+    politics: 'bg-red-500 text-white',
+    economy: 'bg-yellow-500 text-black',
+    sports: 'bg-green-500 text-white',
+    tech: 'bg-blue-500 text-white',
+    world: 'bg-purple-500 text-white',
+    culture: 'bg-pink-500 text-white',
+    science: 'bg-indigo-500 text-white',
+  };
+
   return (
     <div
       className="min-h-screen bg-gradient-to-br from-bg via-[#202a3a] to-[#232d3e] text-text font-main flex flex-col items-center justify-start px-2 sm:px-0"
       dir="rtl"
     >
       {/* Header */}
-      <header className="w-full max-w-2xl mx-auto sticky top-0 z-50 bg-bg/80 backdrop-blur border-b border-accent py-6 px-4 flex flex-col items-center shadow-lg rounded-b-2xl">
-        <img src="/logo.png" alt="Topline Logo" className="h-32 w-auto mb-2 drop-shadow-lg" />
-        <div className="flex items-center gap-4 text-lg text-text/80">
-          <span>🕒 {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-          <button
-            className="bg-accent text-bg px-5 py-2 rounded-xl font-bold text-lg shadow hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-accent transition"
-            onClick={() => window.location.reload()}
-            aria-label="רענן חדשות"
-          >
-            רענון
-          </button>
-        </div>
+      <header className="w-full max-w-2xl mx-auto sticky top-0 z-50 bg-bg/80 backdrop-blur border-b border-accent py-3 px-2 flex flex-col items-center shadow-lg rounded-b-2xl">
+        <img src="/logo.png" alt="Topline Logo" className="h-20 w-auto mb-1 drop-shadow-lg" />
         {/* Categories */}
-        <nav className="w-full flex flex-wrap justify-center gap-2 mt-6">
+        <nav className="w-full flex flex-wrap justify-center gap-1 mt-2">
           {CATEGORIES.map((cat) => (
             <button
               key={cat.key}
               onClick={() => setSelectedCategory(cat.key)}
-              className={`px-5 py-2 rounded-full text-lg font-semibold transition-colors duration-150 shadow
-                ${selectedCategory === cat.key ? 'bg-accent text-bg' : 'bg-bg/70 text-accent border border-accent hover:bg-accent/20'}`}
+              className={`px-3 py-1 rounded-full text-base font-semibold transition-colors duration-150 shadow border border-accent hover:bg-accent/20 focus:outline-none focus:ring-2 focus:ring-accent ${selectedCategory === cat.key ? categoryColors[cat.key] : 'bg-bg/70 text-accent'}`}
               aria-current={selectedCategory === cat.key ? 'page' : undefined}
               style={{ outline: selectedCategory === cat.key ? '2px solid #3ED6C1' : 'none', cursor: 'pointer' }}
             >
@@ -138,6 +145,23 @@ export default function Home() {
           ))}
         </nav>
       </header>
+
+      {/* Google AdSense slot - left */}
+      <aside className="hidden lg:block fixed left-2 top-32 z-40">
+        {/* Google AdSense code here. Replace 'ca-pub-XXXX' with your publisher ID. */}
+        {/* <ins className="adsbygoogle"
+          style={{ display: 'block', width: 160, height: 600 }}
+          data-ad-client="ca-pub-XXXX"
+          data-ad-slot="1234567890"></ins> */}
+      </aside>
+      {/* Google AdSense slot - right */}
+      <aside className="hidden lg:block fixed right-2 top-32 z-40">
+        {/* Google AdSense code here. Replace 'ca-pub-XXXX' with your publisher ID. */}
+        {/* <ins className="adsbygoogle"
+          style={{ display: 'block', width: 160, height: 600 }}
+          data-ad-client="ca-pub-XXXX"
+          data-ad-slot="1234567890"></ins> */}
+      </aside>
 
       {/* Trending Section as Grid (identical to news grid) */}
       <section className="w-full max-w-6xl mx-auto mt-8 mb-4">
@@ -148,7 +172,7 @@ export default function Home() {
             <h2 className="text-2xl font-bold text-accent mb-4 text-center">הכי חם עכשיו</h2>
             <div className="flex flex-wrap justify-center gap-8">
               {trending.slice(0, 3).map((item, idx) => (
-                <NewsCard key={item.url + idx} item={item} />
+                <NewsCard key={item.url + idx} item={{ ...item, category: selectedCategory }} categoryColor={categoryColors[selectedCategory]} />
               ))}
             </div>
           </div>
@@ -161,29 +185,33 @@ export default function Home() {
           <div className="text-center text-red-400 text-lg mt-16">שגיאה בטעינת חדשות: {newsError}</div>
         ) : loading ? (
           <div className="text-center text-accent text-2xl mt-16 animate-pulse">טוען חדשות...</div>
-        ) : news.length === 0 ? (
+        ) : filteredNews.length === 0 ? (
           <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
         ) : (
           <div className="flex flex-wrap justify-center gap-8">
-            {news.slice(0, 21).map((item, idx) => (
-              <NewsCard key={item.url + idx} item={item} />
+            {filteredNews.slice(0, 21).map((item, idx) => (
+              <NewsCard key={item.url + idx} item={item} categoryColor={categoryColors[selectedCategory]} />
             ))}
           </div>
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="w-full max-w-2xl mx-auto bg-bg/80 backdrop-blur border-t border-accent py-6 text-center text-accent text-lg rounded-t-2xl shadow-lg mt-8">
-        Powered by Topline • מקורות: Ynet, Walla, Mako, N12
-      </footer>
+      {/* Taboola widget slot - below news grid */}
+      <section className="w-full max-w-4xl mx-auto my-8">
+        {/* Taboola widget code here. Replace with your publisher ID. */}
+        {/* <div id="taboola-below-article-thumbnails"></div>
+        <script type="text/javascript">
+          window._taboola = window._taboola || [];
+          _taboola.push({
+            mode: 'thumbnails-b',
+            container: 'taboola-below-article-thumbnails',
+            placement: 'Below Article Thumbnails',
+            target_type: 'mix'
+          });
+        </script> */}
+      </section>
 
-      {/* Fade-in animation keyframes */}
-      <style jsx global>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(24px); }
-          to { opacity: 1; transform: none; }
-        }
-      `}</style>
+      {/* NOTE: Ad revenue is managed via your AdSense/Taboola dashboards. Direct PayPal payout per click is not possible via code. */}
     </div>
   );
 } 
