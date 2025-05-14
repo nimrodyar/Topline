@@ -16,6 +16,10 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+CLOUDFLARE_API_KEY = os.getenv("CLOUDFLARE_API_KEY")
+CLOUDFLARE_ACCOUNT_ID = "v1.0-f2439216425b78b6e2a98565-6d6b54435dc9c2b5a87aeed7233856874336dbc3eba634056eaec24baebd4340b2b80359a87d5aa9ce8a7307c5c5ccfb7e35af0916f898d766afeea26afddedb5072af4c6d3fc916a6"
+CLOUDFLARE_ENDPOINT = f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0"
+
 class FeedAggregator:
     def __init__(self):
         # Initialize Google Trends client
@@ -301,7 +305,9 @@ class FeedAggregator:
                             entry_image_url = full_content['image_url']
                     except Exception:
                         pass
-                image_url = entry_image_url
+                image_url = entry_image_url or full_content['image_url']
+                if not image_url:
+                    image_url = generate_ai_image(entry.title)
                 news_item = {
                     'title': getattr(entry, 'title', ''),
                     'content': content,
@@ -436,3 +442,31 @@ class FeedAggregator:
                 logger.error(f"Error fetching most read feed for {source}: {str(e)}")
 
         return trending_news 
+
+def generate_ai_image(prompt: str) -> str:
+    if not CLOUDFLARE_API_KEY:
+        return None
+    headers = {
+        "Authorization": f"Bearer {CLOUDFLARE_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "prompt": prompt,
+        "params": {
+            "sampler_name": "Lcm",
+            "cfg_scale": 7.5,
+            "denoising_strength": 0.75,
+            "hires_fix_denoising_strength": 0.75,
+            "height": 512,
+            "width": 512,
+            "post_processing": ["GFPGAN"]
+        }
+    }
+    try:
+        response = requests.post(CLOUDFLARE_ENDPOINT, headers=headers, json=payload, timeout=20)
+        response.raise_for_status()
+        # Adjust this if the response format is different
+        return response.json()["result"]["image"]
+    except Exception as e:
+        logger.error(f"AI image generation failed: {e}")
+        return None 
