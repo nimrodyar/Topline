@@ -68,13 +68,6 @@ export default function Home() {
       className="min-h-screen bg-gradient-to-br from-bg via-[#202a3a] to-[#232d3e] text-text font-main flex flex-col items-center justify-start px-2 sm:px-0"
       dir="rtl"
     >
-      {/* DEBUG INFO */}
-      <div className="w-full max-w-2xl mx-auto mt-2 mb-2 p-2 rounded bg-black/60 text-accent text-xs text-left ltr:text-left rtl:text-right">
-        <div>API_URL: <span className="font-mono">{API_URL}</span></div>
-        {newsError && <div className="text-red-400">News Error: {newsError}</div>}
-        {trendingError && <div className="text-red-400">Trending Error: {trendingError}</div>}
-      </div>
-
       {/* Header */}
       <header className="w-full max-w-2xl mx-auto sticky top-0 z-50 bg-bg/80 backdrop-blur border-b border-accent py-6 px-4 flex flex-col items-center shadow-lg rounded-b-2xl">
         <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-accent drop-shadow-lg mb-2 animate-pulse">Topline</h1>
