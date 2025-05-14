@@ -37,26 +37,58 @@ function truncateHebrewTitle(title: string, maxLength: number = 60): string {
   return truncated + '...';
 }
 
-// Minimal NewsCard for debugging
+// Minimal NewsCard with image underneath text and brightness filter
 function NewsCard({ item }: { item: NewsItem }) {
   return (
-    <div style={{
-      border: '1px solid #ccc',
-      borderRadius: '8px',
-      padding: '16px',
-      margin: '8px',
-      background: '#fff',
-      minWidth: '220px',
-      maxWidth: '320px'
-    }}>
-      <div style={{ fontWeight: 'bold', fontSize: '1.1em', marginBottom: '8px' }}>
-        {item.title || <span style={{ color: 'red' }}>No Title</span>}
-      </div>
-      <div style={{ color: '#888', fontSize: '0.95em' }}>
-        {item.source || <span style={{ color: 'red' }}>No Source</span>}
-      </div>
-      <div style={{ color: '#aaa', fontSize: '0.8em', marginTop: '8px' }}>
-        {item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer">Read more</a> : 'No URL'}
+    <div
+      style={{
+        position: 'relative',
+        borderRadius: '12px',
+        overflow: 'hidden',
+        margin: '12px',
+        minWidth: '220px',
+        maxWidth: '320px',
+        minHeight: '200px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'flex-end',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+        background: '#eee',
+      }}
+    >
+      {item.image_url && (
+        <img
+          src={item.image_url}
+          alt={item.title}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            filter: 'brightness(0.65)',
+            zIndex: 0,
+          }}
+        />
+      )}
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 1,
+          color: '#fff',
+          padding: '18px 16px 16px 16px',
+          textShadow: '0 2px 8px #000',
+        }}
+      >
+        <div style={{ fontWeight: 'bold', fontSize: '1.1em', marginBottom: '8px' }}>
+          {item.title || <span style={{ color: 'red' }}>No Title</span>}
+        </div>
+        <div style={{ color: '#ffd700', fontSize: '0.95em' }}>
+          {item.source || <span style={{ color: 'red' }}>No Source</span>}
+        </div>
+        <div style={{ color: '#eee', fontSize: '0.8em', marginTop: '8px' }}>
+          {item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', textDecoration: 'underline' }}>Read more</a> : 'No URL'}
+        </div>
       </div>
     </div>
   );
