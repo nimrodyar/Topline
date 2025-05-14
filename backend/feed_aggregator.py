@@ -147,53 +147,39 @@ class FeedAggregator:
                 return og_image['content']
         return None
 
-    async def fetch_full_content(self, url: str, source: str) -> Dict[str, Any]:
-        """
-        Fetch full article content from the source URL
-        """
+    async def fetch_full_content(self, url: str, source: str, session) -> Dict[str, Any]:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        html = await response.text()
-                        soup = BeautifulSoup(html, 'html.parser')
-                        
-                        feed_info = self.rss_feeds[source]
-                        
-                        # Extract content
-                        content_element = soup.select_one(feed_info['content_selector'])
-                        content = content_element.get_text(strip=True) if content_element else ''
-                        
-                        # Extract image
-                        image_element = soup.select_one(feed_info['image_selector'])
-                        image_url = image_element.get('src') if image_element else None
-                        # Try og:image meta tag if not found
-                        if not image_url:
-                            og_image = soup.find('meta', property='og:image')
-                            if og_image and og_image.get('content'):
-                                image_url = og_image['content']
-                        # As a last resort, try first <img> in article body
-                        if not image_url:
-                            first_img = soup.find('img')
-                            if first_img and first_img.get('src'):
-                                image_url = first_img['src']
-                        
-                        # Extract author
-                        author_element = soup.select_one(feed_info['author_selector'])
-                        author = author_element.get_text(strip=True) if author_element else None
-                        
-                        return {
-                            'content': content,
-                            'image_url': image_url,
-                            'author': author
-                        }
+            async with session.get(url, timeout=6) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+                    feed_info = self.rss_feeds[source]
+                    content_element = soup.select_one(feed_info['content_selector'])
+                    content = content_element.get_text(strip=True) if content_element else ''
+                    image_element = soup.select_one(feed_info['image_selector'])
+                    image_url = image_element.get('src') if image_element else None
+                    if not image_url:
+                        og_image = soup.find('meta', property='og:image')
+                        if og_image and og_image.get('content'):
+                            image_url = og_image['content']
+                    if not image_url:
+                        first_img = soup.find('img')
+                        if first_img and first_img.get('src'):
+                            image_url = first_img['src']
+                    author_element = soup.select_one(feed_info['author_selector'])
+                    author = author_element.get_text(strip=True) if author_element else None
+                    return {
+                        'content': content,
+                        'image_url': image_url,
+                        'author': author
+                    }
         except Exception as e:
             logger.error(f"Error fetching full content from {url}: {str(e)}")
-            return {
-                'content': '',
-                'image_url': None,
-                'author': None
-            }
+        return {
+            'content': '',
+            'image_url': None,
+            'author': None
+        }
 
     async def fetch_news_api(self) -> List[Dict[str, Any]]:
         """
@@ -277,22 +263,30 @@ class FeedAggregator:
         
         return 'general'
 
-    async def fetch_rss_feed(self, source: str, feed_info: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def fetch_rss_feed(self, source: str, feed_info: Dict[str, Any], session) -> List[Dict[str, Any]]:
         news_items = []
         try:
             feed = feedparser.parse(feed_info['url'])
-            for entry in feed.entries[:10]:
+            entries = feed.entries[:10]
+            # Fetch full content for first 3, use summary for the rest
+            for idx, entry in enumerate(entries):
                 entry_image_url = self._extract_image_from_entry(entry)
-                full_content = await self.fetch_full_content(entry.link, source)
+                if idx < 3:
+                    try:
+                        full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=6)
+                    except Exception:
+                        full_content = {'content': '', 'image_url': None, 'author': None}
+                else:
+                    full_content = {'content': getattr(entry, 'summary', '') or getattr(entry, 'description', ''), 'image_url': entry_image_url, 'author': None}
                 image_url = entry_image_url or full_content['image_url']
                 news_item = {
                     'title': entry.title,
-                    'content': full_content['content'] or entry.description,
+                    'content': full_content['content'] or getattr(entry, 'description', ''),
                     'source': source,
-                    'category': self._detect_category(entry.title, entry.description),
+                    'category': self._detect_category(entry.title, getattr(entry, 'description', '')),
                     'url': entry.link,
                     'image_url': image_url,
-                    'published_at': entry.published,
+                    'published_at': getattr(entry, 'published', None),
                     'author': full_content['author']
                 }
                 news_items.append(news_item)
@@ -301,10 +295,10 @@ class FeedAggregator:
         return news_items
 
     async def fetch_rss_feeds(self) -> List[Dict[str, Any]]:
-        tasks = [self.fetch_rss_feed(source, feed_info) for source, feed_info in self.rss_feeds.items()]
-        results = await asyncio.gather(*tasks)
-        # Flatten the list of lists
-        return [item for sublist in results for item in sublist]
+        async with aiohttp.ClientSession() as session:
+            tasks = [self.fetch_rss_feed(source, feed_info, session) for source, feed_info in self.rss_feeds.items()]
+            results = await asyncio.gather(*tasks)
+            return [item for sublist in results for item in sublist]
 
     async def fetch_google_trends(self) -> List[Dict[str, Any]]:
         """

@@ -158,8 +158,8 @@ export default function Home() {
   };
 
   // Defensive fallback for news data
-  const safeFilteredNews = Array.isArray(filteredNews) ? filteredNews.filter(Boolean) : [];
-  const safeTrending = Array.isArray(trending) ? trending.filter(Boolean) : [];
+  const safeFilteredNews = Array.isArray(filteredNews) ? filteredNews.filter(item => item && item.title && item.url) : [];
+  const safeTrending = Array.isArray(trending) ? trending.filter(item => item && item.title && item.url) : [];
 
   return (
     <div
