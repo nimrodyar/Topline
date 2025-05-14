@@ -253,24 +253,37 @@ class FeedAggregator:
 
     async def fetch_google_trends(self) -> List[Dict[str, Any]]:
         """
-        Fetch trending topics from Google Trends for Israel
+        Fetch trending topics from Google Trends for Israel (try both 'israel' and 'IL')
         """
         try:
-            # Get real-time trending searches for Israel
-            self.trends_client.build_payload(kw_list=[''], timeframe='now 1-d')
-            trending_searches = self.trends_client.trending_searches(pn='israel')
-            
+            # Try 'israel' first
+            try:
+                self.trends_client.build_payload(kw_list=[''], timeframe='now 1-d')
+                trending_searches = self.trends_client.trending_searches(pn='israel')
+                logger.info(f"Google Trends (israel): {trending_searches}")
+            except Exception as e:
+                logger.warning(f"Failed with 'israel', trying 'IL': {e}")
+                trending_searches = None
+
+            # If 'israel' fails or returns empty, try 'IL'
+            if trending_searches is None or len(trending_searches) == 0:
+                try:
+                    self.trends_client.build_payload(kw_list=[''], timeframe='now 1-d')
+                    trending_searches = self.trends_client.trending_searches(pn='IL')
+                    logger.info(f"Google Trends (IL): {trending_searches}")
+                except Exception as e:
+                    logger.error(f"Google Trends failed for both 'israel' and 'IL': {e}")
+                    return []
+
             trends = []
             for topic in trending_searches:
                 trend = {
-                    'topic': topic,
+                    'topic': str(topic),
                     'source': 'google_trends',
                     'timestamp': datetime.now().isoformat()
                 }
                 trends.append(trend)
-            
             return trends
-            
         except Exception as e:
             logger.error(f"Error fetching Google Trends: {str(e)}")
             return []
