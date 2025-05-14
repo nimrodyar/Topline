@@ -25,6 +25,47 @@ const CATEGORIES = [
   { key: 'science', label: 'מדע' },
 ];
 
+// Smart Hebrew title truncator
+function truncateHebrewTitle(title: string, maxLength: number = 60): string {
+  if (title.length <= maxLength) return title;
+  // Try to cut at a word boundary
+  let truncated = title.slice(0, maxLength);
+  const lastSpace = truncated.lastIndexOf(' ');
+  if (lastSpace > 0) truncated = truncated.slice(0, lastSpace);
+  return truncated + '...';
+}
+
+// NewsCard component for both trending and news
+function NewsCard({ item }: { item: NewsItem }) {
+  const fallbackImg = '/fallback-news.gif';
+  const [imgError, setImgError] = useState(false);
+  return (
+    <div className="relative rounded-2xl overflow-hidden shadow-xl group transition-transform hover:scale-105 bg-gray-200 border border-accent/30 aspect-[4/3] flex flex-col justify-end max-w-xs mx-auto">
+      <img
+        src={imgError || !item.image_url ? fallbackImg : item.image_url}
+        alt={item.title}
+        className="absolute inset-0 w-full h-full object-cover object-center z-0 transition-opacity duration-300 bg-gray-200 border-b-4 border-accent"
+        onError={() => setImgError(true)}
+        style={{ minHeight: 0 }}
+      />
+      {/* Overlay for title and source, at the bottom */}
+      <div className="relative z-10 w-full flex flex-col items-center justify-end bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-4 px-4 min-h-[80px]">
+        <span className="w-full text-center text-xl font-bold text-white block mb-1 truncate" style={{ textShadow: '0 2px 8px #000' }}>
+          {truncateHebrewTitle(item.title)}
+        </span>
+        <div className="mt-1 text-accent text-md bg-bg/80 px-3 py-1 rounded-full shadow">
+          {item.source}
+        </div>
+      </div>
+      {/* Debug overlay for image URL (visible on hover) */}
+      <div className="absolute left-2 bottom-2 z-30 text-xs text-white bg-black/70 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 select-all">
+        {item.image_url}
+      </div>
+      <a href={item.url} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-40" aria-label={item.title}></a>
+    </div>
+  );
+}
+
 export default function Home() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [trending, setTrending] = useState<NewsItem[]>([]);
@@ -98,42 +139,18 @@ export default function Home() {
         </nav>
       </header>
 
-      {/* Trending Section */}
-      <section className="w-full max-w-2xl mx-auto mt-8 mb-4">
+      {/* Trending Section as Grid (identical to news grid) */}
+      <section className="w-full max-w-6xl mx-auto mt-8 mb-4">
         {trendingError ? (
           <div className="text-center text-red-400 text-lg">שגיאה בטעינת טרנדים: {trendingError}</div>
         ) : trending.length > 0 && (
           <div>
             <h2 className="text-2xl font-bold text-accent mb-4 text-center">הכי חם עכשיו</h2>
-            <ul className="flex flex-col gap-4">
+            <div className="flex flex-wrap justify-center gap-8">
               {trending.slice(0, 3).map((item, idx) => (
-                <li key={item.url + idx} className="relative rounded-2xl overflow-hidden shadow-xl min-h-[180px]">
-                  {item.image_url ? (
-                    <div className="w-full h-[180px] sm:h-[220px] bg-black/40 flex items-end justify-center">
-                      <img
-                        src={item.image_url}
-                        alt={item.title}
-                        className="absolute inset-0 w-full h-full object-cover object-center z-0"
-                        style={{ filter: 'brightness(0.7)' }}
-                      />
-                      <span className="relative z-10 w-full text-center px-4 py-2 text-2xl sm:text-3xl font-extrabold uppercase tracking-wide text-white bg-black/60 backdrop-blur rounded-b-2xl block" style={{ textShadow: '0 2px 8px #000' }}>
-                        {item.title}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="bg-white/10 backdrop-blur-lg border border-accent/30 rounded-2xl p-5 flex items-center justify-center min-h-[180px]">
-                      <span className="text-2xl sm:text-3xl font-extrabold text-white text-center block">
-                        {item.title}
-                      </span>
-                    </div>
-                  )}
-                  <div className="absolute top-2 right-4 z-20 text-accent text-lg bg-bg/80 px-3 py-1 rounded-full shadow">
-                    {item.source}
-                  </div>
-                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-30" aria-label={item.title}></a>
-                </li>
+                <NewsCard key={item.url + idx} item={item} />
               ))}
-            </ul>
+            </div>
           </div>
         )}
       </section>
@@ -147,30 +164,9 @@ export default function Home() {
         ) : news.length === 0 ? (
           <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="flex flex-wrap justify-center gap-8">
             {news.slice(0, 21).map((item, idx) => (
-              <div key={item.url + idx} className="relative rounded-2xl overflow-hidden shadow-xl min-h-[220px] group transition-transform hover:scale-105">
-                {item.image_url ? (
-                  <>
-                    <img
-                      src={item.image_url}
-                      alt={item.title}
-                      className="absolute inset-0 w-full h-full object-cover object-center z-0 transition-opacity duration-300"
-                    />
-                    <span className="relative z-10 w-full text-center px-4 py-2 text-xl font-bold text-white bg-black/60 backdrop-blur block opacity-90 group-hover:opacity-60 transition-opacity duration-300" style={{ textShadow: '0 2px 8px #000' }}>
-                      {item.title}
-                    </span>
-                  </>
-                ) : (
-                  <span className="relative z-10 w-full text-center px-4 py-2 text-xl font-bold text-white bg-black/60 backdrop-blur block">
-                    {item.title}
-                  </span>
-                )}
-                <div className="absolute top-2 right-4 z-20 text-accent text-md bg-bg/80 px-3 py-1 rounded-full shadow">
-                  {item.source}
-                </div>
-                <a href={item.url} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-30" aria-label={item.title}></a>
-              </div>
+              <NewsCard key={item.url + idx} item={item} />
             ))}
           </div>
         )}
