@@ -117,12 +117,15 @@ export default function Home() {
     setNewsError(null);
     axios
       .get(`${API_URL}/api/news${selectedCategory !== 'all' ? `?category=${selectedCategory}` : ''}`)
-      .then((res) => setNews(res.data))
-      .catch((err) => {
-        setNews([]);
-        setNewsError(err?.message || 'News fetch error');
+      .then((res) => {
+        console.log('API NEWS RESPONSE:', res.data); // Debug log
+        setNews(res.data);
+        setLoading(false);
       })
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        setNewsError(err.message || 'שגיאה בטעינת חדשות');
+        setLoading(false);
+      });
   }, [selectedCategory]);
 
   useEffect(() => {
