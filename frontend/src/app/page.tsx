@@ -49,8 +49,8 @@ function NewsCard({ item, categoryColor }: { item: NewsItem; categoryColor: stri
         onError={() => setImgError(true)}
         style={{ minHeight: 0 }}
       />
-      {/* Overlay for title and source, at the bottom */}
-      <div className="relative z-10 w-full flex flex-col items-center justify-end bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-4 px-4 min-h-[80px]">
+      {/* Overlay for title and source, at the top */}
+      <div className="absolute top-0 left-0 w-full flex flex-col items-center bg-gradient-to-b from-black/90 via-black/60 to-transparent pt-4 pb-2 px-4 min-h-[80px] z-10">
         <span className="w-full text-center text-xl font-bold text-white block mb-1 truncate" style={{ textShadow: '0 2px 8px #000' }}>
           {truncateHebrewTitle(item.title)}
         </span>
@@ -114,11 +114,11 @@ export default function Home() {
   const categoryColors: Record<string, string> = {
     all: 'bg-accent text-bg',
     politics: 'bg-red-500 text-white',
-    economy: 'bg-yellow-500 text-black',
+    business: 'bg-yellow-500 text-black',
+    technology: 'bg-blue-500 text-white',
     sports: 'bg-green-500 text-white',
-    tech: 'bg-blue-500 text-white',
-    world: 'bg-purple-500 text-white',
-    culture: 'bg-pink-500 text-white',
+    entertainment: 'bg-pink-500 text-white',
+    health: 'bg-teal-500 text-white',
     science: 'bg-indigo-500 text-white',
   };
 
@@ -164,7 +164,7 @@ export default function Home() {
       </aside>
 
       {/* Trending Section as Grid (identical to news grid) */}
-      <section className="w-full max-w-6xl mx-auto mt-8 mb-4">
+      <section className="w-full max-w-6xl mx-auto mt-10 mb-8">
         {trendingError ? (
           <div className="text-center text-red-400 text-lg">שגיאה בטעינת טרנדים: {trendingError}</div>
         ) : trending.length > 0 && (
@@ -172,7 +172,7 @@ export default function Home() {
             <h2 className="text-2xl font-bold text-accent mb-4 text-center">הכי חם עכשיו</h2>
             <div className="flex flex-wrap justify-center gap-8">
               {trending.slice(0, 3).map((item, idx) => (
-                <NewsCard key={item.url + idx} item={{ ...item, category: selectedCategory }} categoryColor={categoryColors[selectedCategory]} />
+                <NewsCard key={item.url + idx} item={item} categoryColor={categoryColors[item.category] || categoryColors['all']} />
               ))}
             </div>
           </div>
@@ -190,7 +190,7 @@ export default function Home() {
         ) : (
           <div className="flex flex-wrap justify-center gap-8">
             {filteredNews.slice(0, 21).map((item, idx) => (
-              <NewsCard key={item.url + idx} item={item} categoryColor={categoryColors[selectedCategory]} />
+              <NewsCard key={item.url + idx} item={item} categoryColor={categoryColors[item.category] || categoryColors['all']} />
             ))}
           </div>
         )}
