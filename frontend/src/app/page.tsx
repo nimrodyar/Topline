@@ -41,7 +41,7 @@ function truncateHebrewTitle(title: string, maxLength: number = 60): string {
 // Minimal NewsCard with image underneath text and brightness filter
 function NewsCard({ item }: { item: NewsItem }) {
   const hasImage = !!item.image_url;
-  return (
+  const cardContent = (
     <div
       className={hasImage ? "news-card-hover" : "news-card-noimg"}
       style={{
@@ -59,6 +59,8 @@ function NewsCard({ item }: { item: NewsItem }) {
         boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
         background: hasImage ? '#eee' : '#232d3e',
         width: hasImage ? undefined : 'calc(100% - 24px)',
+        cursor: item.url ? 'pointer' : 'default',
+        textDecoration: 'none',
       }}
     >
       {hasImage && (
@@ -100,7 +102,7 @@ function NewsCard({ item }: { item: NewsItem }) {
           {item.source || <span style={{ color: 'red' }}>No Source</span>}
         </div>
         <div style={{ color: '#eee', fontSize: '0.8em', marginTop: '8px' }}>
-          {item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', textDecoration: 'underline' }}>Read more</a> : 'No URL'}
+          {item.url ? <span style={{ color: '#fff', textDecoration: 'underline' }}>Read more</span> : 'No URL'}
         </div>
       </div>
       <style jsx>{`
@@ -113,6 +115,18 @@ function NewsCard({ item }: { item: NewsItem }) {
       `}</style>
     </div>
   );
+  return item.url ? (
+    <a
+      href={item.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+      tabIndex={0}
+      aria-label={item.title}
+    >
+      {cardContent}
+    </a>
+  ) : cardContent;
 }
 
 function AdCard() {
