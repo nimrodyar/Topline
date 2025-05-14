@@ -31,21 +31,31 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [now, setNow] = useState(new Date());
+  const [newsError, setNewsError] = useState<string | null>(null);
+  const [trendingError, setTrendingError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setNewsError(null);
     axios
       .get(`${API_URL}/api/news${selectedCategory !== 'all' ? `?category=${selectedCategory}` : ''}`)
       .then((res) => setNews(res.data))
-      .catch(() => setNews([]))
+      .catch((err) => {
+        setNews([]);
+        setNewsError(err?.message || 'News fetch error');
+      })
       .finally(() => setLoading(false));
   }, [selectedCategory]);
 
   useEffect(() => {
+    setTrendingError(null);
     axios
       .get(`${API_URL}/api/trending`)
       .then((res) => setTrending(res.data))
-      .catch(() => setTrending([]));
+      .catch((err) => {
+        setTrending([]);
+        setTrendingError(err?.message || 'Trending fetch error');
+      });
   }, []);
 
   useEffect(() => {
@@ -58,6 +68,13 @@ export default function Home() {
       className="min-h-screen bg-gradient-to-br from-bg via-[#202a3a] to-[#232d3e] text-text font-main flex flex-col items-center justify-start px-2 sm:px-0"
       dir="rtl"
     >
+      {/* DEBUG INFO */}
+      <div className="w-full max-w-2xl mx-auto mt-2 mb-2 p-2 rounded bg-black/60 text-accent text-xs text-left ltr:text-left rtl:text-right">
+        <div>API_URL: <span className="font-mono">{API_URL}</span></div>
+        {newsError && <div className="text-red-400">News Error: {newsError}</div>}
+        {trendingError && <div className="text-red-400">Trending Error: {trendingError}</div>}
+      </div>
+
       {/* Header */}
       <header className="w-full max-w-2xl mx-auto sticky top-0 z-50 bg-bg/80 backdrop-blur border-b border-accent py-6 px-4 flex flex-col items-center shadow-lg rounded-b-2xl">
         <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-accent drop-shadow-lg mb-2 animate-pulse">Topline</h1>
@@ -80,6 +97,7 @@ export default function Home() {
               className={`px-5 py-2 rounded-full text-lg font-semibold transition-colors duration-150 shadow
                 ${selectedCategory === cat.key ? 'bg-accent text-bg' : 'bg-bg/70 text-accent border border-accent hover:bg-accent/20'}`}
               aria-current={selectedCategory === cat.key ? 'page' : undefined}
+              style={{ outline: selectedCategory === cat.key ? '2px solid #3ED6C1' : 'none' }}
             >
               {cat.label}
             </button>
@@ -89,7 +107,9 @@ export default function Home() {
 
       {/* Trending Section */}
       <section className="w-full max-w-2xl mx-auto mt-8 mb-4">
-        {trending.length > 0 && (
+        {trendingError ? (
+          <div className="text-center text-red-400 text-lg">שגיאה בטעינת טרנדים: {trendingError}</div>
+        ) : trending.length > 0 && (
           <div>
             <h2 className="text-2xl font-bold text-accent mb-4 text-center">הכי חם עכשיו</h2>
             <ul className="flex flex-col gap-4">
@@ -115,7 +135,9 @@ export default function Home() {
 
       {/* News Feed */}
       <main className="flex-1 w-full max-w-2xl mx-auto pb-8">
-        {loading ? (
+        {newsError ? (
+          <div className="text-center text-red-400 text-lg mt-16">שגיאה בטעינת חדשות: {newsError}</div>
+        ) : loading ? (
           <div className="text-center text-accent text-2xl mt-16 animate-pulse">טוען חדשות...</div>
         ) : news.length === 0 ? (
           <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
