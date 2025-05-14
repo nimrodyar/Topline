@@ -1,154 +1,109 @@
 'use client';
 
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { useInView } from 'react-intersection-observer';
-import { useQuery } from 'react-query';
+import { useEffect, useState } from 'react';
 import axios from 'axios';
 
 interface NewsItem {
-  id: string;
   title: string;
-  content: string;
+  url: string;
   source: string;
-  engagement: {
-    views: number;
-    shares: number;
-    comments: number;
-  };
-  publishedAt: string;
+  image_url: string | null;
+  published_at: string;
+  type: string;
 }
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://toplinebackend1.vercel.app';
+
+const CATEGORIES = [
+  { key: 'all', label: 'הכל' },
+  { key: 'politics', label: 'פוליטיקה' },
+  { key: 'business', label: 'עסקים' },
+  { key: 'technology', label: 'טכנולוגיה' },
+  { key: 'sports', label: 'ספורט' },
+  { key: 'entertainment', label: 'בידור' },
+  { key: 'health', label: 'בריאות' },
+  { key: 'science', label: 'מדע' },
+];
+
 export default function Home() {
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const { ref, inView } = useInView({
-    threshold: 0.1,
-    triggerOnce: true,
-  });
+  const [now, setNow] = useState(new Date());
 
-  const { data: newsItems, isLoading, error } = useQuery<NewsItem[]>(
-    ['news', selectedCategory],
-    async () => {
-      try {
-        const response = await axios.get(`/api/news?category=${selectedCategory}`);
-        return response.data;
-      } catch (error) {
-        console.error("Error fetching news:", error);
-        return [];
-      }
-    },
-    {
-      initialData: [],
-      retry: false,
-    }
-  );
+  useEffect(() => {
+    setLoading(true);
+    axios
+      .get(`${API_URL}/api/news${selectedCategory !== 'all' ? `?category=${selectedCategory}` : ''}`)
+      .then((res) => setNews(res.data))
+      .catch(() => setNews([]))
+      .finally(() => setLoading(false));
+  }, [selectedCategory]);
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-100 p-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="animate-pulse space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="bg-white p-6 rounded-lg shadow-md">
-                <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-100 p-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Error Loading News</h2>
-            <p className="text-gray-600">Please try again later.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-bg text-text font-main flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <h1 className="text-2xl font-bold text-gray-900">Topline</h1>
-            <nav className="flex space-x-4">
-              <button className="text-gray-600 hover:text-gray-900">Search</button>
-              <button className="text-gray-600 hover:text-gray-900">Menu</button>
-            </nav>
-          </div>
+      <header className="w-full bg-bg border-b border-accent py-4 px-4 flex items-center justify-between">
+        <h1 className="text-3xl font-bold tracking-tight text-accent">Topline</h1>
+        <div className="flex items-center space-x-4">
+          <span className="text-lg text-text/80">🕒 {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          <button
+            className="bg-accent text-bg px-4 py-2 rounded-lg font-semibold text-lg hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-accent"
+            onClick={() => window.location.reload()}
+            aria-label="רענן חדשות"
+          >
+            רענון
+          </button>
         </div>
       </header>
 
       {/* Categories */}
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-4 overflow-x-auto py-4">
-            {['all', 'politics', 'business', 'technology', 'sports'].map((category) => (
-              <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`px-4 py-2 rounded-full text-sm font-medium ${
-                  selectedCategory === category
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {category.charAt(0).toUpperCase() + category.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      <nav className="w-full bg-bg border-b border-accent px-4 py-2 flex gap-2 overflow-x-auto">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat.key}
+            onClick={() => setSelectedCategory(cat.key)}
+            className={`px-4 py-2 rounded-full text-lg font-medium transition-colors duration-150
+              ${selectedCategory === cat.key ? 'bg-accent text-bg' : 'bg-bg text-accent border border-accent'}`}
+            aria-current={selectedCategory === cat.key ? 'page' : undefined}
+          >
+            {cat.label}
+          </button>
+        ))}
+      </nav>
 
       {/* News Feed */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {newsItems?.length === 0 ? (
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <p className="text-gray-600">No news items available at the moment.</p>
-          </div>
+      <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-8">
+        {loading ? (
+          <div className="text-center text-accent text-2xl mt-16 animate-pulse">טוען חדשות...</div>
+        ) : news.length === 0 ? (
+          <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
         ) : (
-          <div className="space-y-6">
-            {newsItems?.map((item, index) => (
-              <motion.article
-                key={item.id}
-                ref={ref}
-                initial={{ opacity: 0, y: 20 }}
-                animate={inView ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                className="bg-white rounded-lg shadow-sm overflow-hidden"
-              >
-                <div className="p-6">
-                  <div className="flex items-center space-x-2 text-sm text-gray-500 mb-2">
+          <ul className="space-y-8">
+            {news.slice(0, 20).map((item, idx) => (
+              <li key={item.url + idx} className="bg-bg border border-accent rounded-2xl p-6 shadow-lg">
+                <a href={item.url} target="_blank" rel="noopener noreferrer" className="block focus:outline-none focus:ring-2 focus:ring-accent">
+                  <h2 className="text-2xl font-bold text-text mb-2 leading-snug">{item.title}</h2>
+                  <div className="flex items-center gap-2 text-accent text-lg mb-1">
                     <span>{item.source}</span>
-                    <span>•</span>
-                    <span>{new Date(item.publishedAt).toLocaleDateString()}</span>
+                    {item.published_at && <span>• {new Date(item.published_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
                   </div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-4">{item.title}</h2>
-                  <p className="text-gray-600 mb-4">{item.content}</p>
-                  <div className="flex items-center space-x-4 text-sm text-gray-500">
-                    <span>{item.engagement.views} views</span>
-                    <span>{item.engagement.shares} shares</span>
-                    <span>{item.engagement.comments} comments</span>
-                  </div>
-                </div>
-                {/* Ad Space */}
-                <div className="bg-gray-100 p-4 text-center text-sm text-gray-500">
-                  Advertisement
-                </div>
-              </motion.article>
+                </a>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
-      </div>
-    </main>
+      </main>
+
+      {/* Footer */}
+      <footer className="w-full bg-bg border-t border-accent py-4 text-center text-accent text-lg">
+        Powered by Topline • מקורות: Ynet, Walla, Mako, N12
+      </footer>
+    </div>
   );
 } 

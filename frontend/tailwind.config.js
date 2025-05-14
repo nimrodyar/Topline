@@ -20,8 +20,12 @@ module.exports = {
           800: '#075985',
           900: '#0c4a6e',
         },
+        bg: '#181F2A',
+        text: '#F5F6FA',
+        accent: '#3ED6C1',
       },
       fontFamily: {
+        main: ['Inter', 'Open Sans', 'Arial', 'sans-serif'],
         sans: ['var(--font-inter)'],
       },
     },
