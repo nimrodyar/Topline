@@ -277,41 +277,34 @@ class FeedAggregator:
         
         return 'general'
 
-    async def fetch_rss_feeds(self) -> List[Dict[str, Any]]:
-        """
-        Fetch news from configured RSS feeds
-        """
+    async def fetch_rss_feed(self, source: str, feed_info: Dict[str, Any]) -> List[Dict[str, Any]]:
         news_items = []
-        
-        for source, feed_info in self.rss_feeds.items():
-            try:
-                feed = feedparser.parse(feed_info['url'])
-                
-                for entry in feed.entries[:10]:  # Get latest 10 entries
-                    # Try to extract image from RSS entry first
-                    entry_image_url = self._extract_image_from_entry(entry)
-                    # Fetch full content
-                    full_content = await self.fetch_full_content(entry.link, source)
-                    # Prefer RSS image, fallback to full_content image
-                    image_url = entry_image_url or full_content['image_url']
-                    
-                    news_item = {
-                        'title': entry.title,
-                        'content': full_content['content'] or entry.description,
-                        'source': source,
-                        'category': self._detect_category(entry.title, entry.description),
-                        'url': entry.link,
-                        'image_url': image_url,
-                        'published_at': entry.published,
-                        'author': full_content['author']
-                    }
-                    news_items.append(news_item)
-                    
-            except Exception as e:
-                logger.error(f"Error fetching RSS feed {source}: {str(e)}")
-                continue
-        
+        try:
+            feed = feedparser.parse(feed_info['url'])
+            for entry in feed.entries[:10]:
+                entry_image_url = self._extract_image_from_entry(entry)
+                full_content = await self.fetch_full_content(entry.link, source)
+                image_url = entry_image_url or full_content['image_url']
+                news_item = {
+                    'title': entry.title,
+                    'content': full_content['content'] or entry.description,
+                    'source': source,
+                    'category': self._detect_category(entry.title, entry.description),
+                    'url': entry.link,
+                    'image_url': image_url,
+                    'published_at': entry.published,
+                    'author': full_content['author']
+                }
+                news_items.append(news_item)
+        except Exception as e:
+            logger.error(f"Error fetching RSS feed {source}: {str(e)}")
         return news_items
+
+    async def fetch_rss_feeds(self) -> List[Dict[str, Any]]:
+        tasks = [self.fetch_rss_feed(source, feed_info) for source, feed_info in self.rss_feeds.items()]
+        results = await asyncio.gather(*tasks)
+        # Flatten the list of lists
+        return [item for sublist in results for item in sublist]
 
     async def fetch_google_trends(self) -> List[Dict[str, Any]]:
         """
