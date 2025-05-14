@@ -77,11 +77,11 @@ async def get_categories():
 @app.get("/api/trending")
 async def get_trending_news():
     """
-    Get trending news based on Google Trends
+    Get trending news based on News API top headlines and 'most read' RSS feeds
     """
     try:
-        data = await feed_aggregator.get_latest_data()
-        return data['trends']
+        trending = await feed_aggregator.fetch_trending_news()
+        return trending
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

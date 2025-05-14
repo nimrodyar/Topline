@@ -311,3 +311,56 @@ class FeedAggregator:
             }
         
         return self._cache 
+
+    async def fetch_trending_news(self) -> List[Dict[str, Any]]:
+        """
+        Fetch trending news from News API (top headlines) and 'most read' RSS feeds from Israeli news sites.
+        """
+        trending_news = []
+
+        # 1. News API Top Headlines for Israel
+        try:
+            headlines_url = f"{self.news_api_base_url}/top-headlines"
+            params = {
+                'apiKey': self.news_api_key,
+                'country': 'il',
+                'pageSize': 10
+            }
+            response = requests.get(headlines_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            for article in data.get('articles', []):
+                trending_news.append({
+                    'title': article['title'],
+                    'url': article['url'],
+                    'source': article['source']['name'],
+                    'image_url': article['urlToImage'],
+                    'published_at': article['publishedAt'],
+                    'type': 'newsapi'
+                })
+        except Exception as e:
+            logger.error(f"Error fetching News API top headlines: {str(e)}")
+
+        # 2. 'Most Read' RSS feeds from Israeli news sites
+        most_read_feeds = {
+            'ynet': 'https://www.ynet.co.il/Integration/StoryRss1854.xml',  # Ynet Most Read
+            'mako': 'https://rcs.mako.co.il/rssPopular.xml',                # Mako Most Popular
+            'walla': 'https://rss.walla.co.il/feed/22',                     # Walla Most Read
+            'n12': 'https://www.mako.co.il/rss/most-popular.xml'            # N12 Most Popular
+        }
+        for source, url in most_read_feeds.items():
+            try:
+                feed = feedparser.parse(url)
+                for entry in feed.entries[:5]:
+                    trending_news.append({
+                        'title': entry.title,
+                        'url': entry.link,
+                        'source': source,
+                        'image_url': None,
+                        'published_at': entry.published if hasattr(entry, 'published') else None,
+                        'type': 'rss-most-read'
+                    })
+            except Exception as e:
+                logger.error(f"Error fetching most read feed for {source}: {str(e)}")
+
+        return trending_news 
