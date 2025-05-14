@@ -13,7 +13,8 @@ interface NewsItem {
   category: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://toplinebackend1.vercel.app';
+// Use the public Render backend for all API calls
+const API_URL = 'https://topline-l89o.onrender.com';
 
 const CATEGORIES = [
   { key: 'all', label: 'הכל' },
