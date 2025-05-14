@@ -336,8 +336,6 @@ class FeedAggregator:
                     except Exception:
                         pass
                 image_url = entry_image_url or (full_content['image_url'] if 'full_content' in locals() else None)
-                if not image_url:
-                    image_url = generate_ai_image(entry.title, cache_key=getattr(entry, 'link', None))
                 news_item = {
                     'title': getattr(entry, 'title', ''),
                     'content': content,
@@ -440,7 +438,7 @@ class FeedAggregator:
             for article in data.get('articles', []):
                 image_url = article.get('urlToImage')
                 if not image_url:
-                    image_url = generate_ai_image(article['title'])
+                    image_url = article.get('urlToImage')
                 trending_news.append({
                     'title': article['title'],
                     'url': article['url'],
@@ -472,7 +470,7 @@ class FeedAggregator:
                         except Exception:
                             pass
                         if not image_url:
-                            image_url = generate_ai_image(entry.title)
+                            image_url = article.get('urlToImage')
                         trending_news.append({
                             'title': entry.title,
                             'url': entry.link,
@@ -484,37 +482,4 @@ class FeedAggregator:
                 except Exception as e:
                     logger.error(f"Error fetching most read feed for {source}: {str(e)}")
 
-        return trending_news
-
-def generate_ai_image(prompt: str, cache_key: str = None) -> str:
-    if not CLOUDFLARE_API_KEY:
-        return None
-    if cache_key and cache_key in AI_IMAGE_CACHE:
-        return AI_IMAGE_CACHE[cache_key]
-    prompt_en = translate_to_english(prompt)
-    headers = {
-        "Authorization": f"Bearer {CLOUDFLARE_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "prompt": prompt_en,
-        "params": {
-            "sampler_name": "Lcm",
-            "cfg_scale": 7.5,
-            "denoising_strength": 0.75,
-            "hires_fix_denoising_strength": 0.75,
-            "height": 512,
-            "width": 512,
-            "post_processing": ["GFPGAN"]
-        }
-    }
-    try:
-        response = requests.post(CLOUDFLARE_ENDPOINT, headers=headers, json=payload, timeout=20)
-        response.raise_for_status()
-        image_url = response.json()["result"]["image"]
-        if cache_key:
-            AI_IMAGE_CACHE[cache_key] = image_url
-        return image_url
-    except Exception as e:
-        logger.error(f"AI image generation failed: {e}")
-        return None 
+        return trending_news 

@@ -40,48 +40,57 @@ function truncateHebrewTitle(title: string, maxLength: number = 60): string {
 
 // Minimal NewsCard with image underneath text and brightness filter
 function NewsCard({ item }: { item: NewsItem }) {
+  const hasImage = !!item.image_url;
   return (
     <div
-      className="news-card-hover"
+      className={hasImage ? "news-card-hover" : "news-card-noimg"}
       style={{
         position: 'relative',
         borderRadius: '12px',
         overflow: 'hidden',
         margin: '12px',
-        minWidth: '220px',
-        maxWidth: '320px',
-        minHeight: '200px',
+        minWidth: hasImage ? '220px' : '100%',
+        maxWidth: hasImage ? '320px' : '100%',
+        minHeight: hasImage ? '200px' : '120px',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'flex-end',
+        justifyContent: 'center',
+        alignItems: 'center',
         boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-        background: '#eee',
+        background: hasImage ? '#eee' : '#232d3e',
+        width: hasImage ? undefined : 'calc(100% - 24px)',
       }}
     >
-      {item.image_url && (
-        <img
-          src={item.image_url}
-          alt={item.title}
-          className="news-card-img"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            filter: 'brightness(0.65)',
-            zIndex: 0,
-            transition: 'filter 0.3s',
-          }}
-        />
+      {hasImage && (
+        <>
+          <img
+            src={item.image_url || ''}
+            alt={item.title || ''}
+            className="news-card-img"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              filter: 'brightness(0.65)',
+              zIndex: 0,
+              transition: 'filter 0.3s',
+            }}
+          />
+          {/* Dark overlay for readability */}
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 1 }} />
+        </>
       )}
       <div
         style={{
           position: 'relative',
-          zIndex: 1,
+          zIndex: 2,
           color: '#fff',
-          padding: '18px 16px 16px 16px',
+          padding: hasImage ? '18px 16px 16px 16px' : '24px 0',
           textShadow: '0 2px 8px #000',
+          width: '100%',
+          textAlign: 'center',
         }}
       >
         <div style={{ fontWeight: 'bold', fontSize: '1.1em', marginBottom: '8px' }}>
