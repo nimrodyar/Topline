@@ -73,7 +73,7 @@ function NewsCard({ item }: { item: NewsItem }) {
               width: '100%',
               height: '100%',
               objectFit: 'cover',
-              filter: 'brightness(0.65)',
+              filter: 'blur(6px) brightness(0.65)',
               zIndex: 0,
               transition: 'filter 0.3s',
             }}
@@ -104,8 +104,11 @@ function NewsCard({ item }: { item: NewsItem }) {
         </div>
       </div>
       <style jsx>{`
+        .news-card-hover .news-card-img {
+          filter: blur(6px) brightness(0.65);
+        }
         .news-card-hover:hover .news-card-img {
-          filter: brightness(0.5) blur(6px);
+          filter: brightness(0.65);
         }
       `}</style>
     </div>
