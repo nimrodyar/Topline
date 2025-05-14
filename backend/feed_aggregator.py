@@ -20,6 +20,26 @@ CLOUDFLARE_API_KEY = os.getenv("CLOUDFLARE_API_KEY")
 CLOUDFLARE_ACCOUNT_ID = "v1.0-f2439216425b78b6e2a98565-6d6b54435dc9c2b5a87aeed7233856874336dbc3eba634056eaec24baebd4340b2b80359a87d5aa9ce8a7307c5c5ccfb7e35af0916f898d766afeea26afddedb5072af4c6d3fc916a6"
 CLOUDFLARE_ENDPOINT = f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0"
 
+# Add translation function using LibreTranslate
+TRANSLATE_ENDPOINT = "https://libretranslate.de/translate"
+def translate_to_english(text: str) -> str:
+    try:
+        # Simple heuristic: if text contains Hebrew characters, translate
+        if any('\u0590' <= c <= '\u05EA' for c in text):
+            payload = {
+                'q': text,
+                'source': 'he',
+                'target': 'en',
+                'format': 'text'
+            }
+            response = requests.post(TRANSLATE_ENDPOINT, data=payload, timeout=10)
+            response.raise_for_status()
+            return response.json().get('translatedText', text)
+        return text
+    except Exception as e:
+        logger.error(f"Translation failed: {e}")
+        return text
+
 class FeedAggregator:
     def __init__(self):
         # Initialize Google Trends client
@@ -459,12 +479,13 @@ class FeedAggregator:
 def generate_ai_image(prompt: str) -> str:
     if not CLOUDFLARE_API_KEY:
         return None
+    prompt_en = translate_to_english(prompt)
     headers = {
         "Authorization": f"Bearer {CLOUDFLARE_API_KEY}",
         "Content-Type": "application/json"
     }
     payload = {
-        "prompt": prompt,
+        "prompt": prompt_en,
         "params": {
             "sampler_name": "Lcm",
             "cfg_scale": 7.5,
