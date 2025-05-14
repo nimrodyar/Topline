@@ -41,6 +41,7 @@ function truncateHebrewTitle(title: string, maxLength: number = 60): string {
 function NewsCard({ item }: { item: NewsItem }) {
   return (
     <div
+      className="news-card-hover"
       style={{
         position: 'relative',
         borderRadius: '12px',
@@ -60,6 +61,7 @@ function NewsCard({ item }: { item: NewsItem }) {
         <img
           src={item.image_url}
           alt={item.title}
+          className="news-card-img"
           style={{
             position: 'absolute',
             inset: 0,
@@ -68,6 +70,7 @@ function NewsCard({ item }: { item: NewsItem }) {
             objectFit: 'cover',
             filter: 'brightness(0.65)',
             zIndex: 0,
+            transition: 'filter 0.3s',
           }}
         />
       )}
@@ -90,6 +93,11 @@ function NewsCard({ item }: { item: NewsItem }) {
           {item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', textDecoration: 'underline' }}>Read more</a> : 'No URL'}
         </div>
       </div>
+      <style jsx>{`
+        .news-card-hover:hover .news-card-img {
+          filter: brightness(0.5) blur(6px);
+        }
+      `}</style>
     </div>
   );
 }
