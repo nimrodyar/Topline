@@ -169,11 +169,12 @@ async def fetch_world_news(category: Optional[str] = None) -> List[Dict]:
                 return []
             params['category'] = category
             
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=30)  # Increase timeout to 30 seconds
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(
                 WORLD_NEWS_BASE_URL,
                 params=params,
-                timeout=10
+                timeout=20  # Increase per-request timeout
             ) as response:
                 if response.status == 429:
                     logger.error("World News API rate limit exceeded")
@@ -190,6 +191,9 @@ async def fetch_world_news(category: Optional[str] = None) -> List[Dict]:
                 logger.info(f"Fetched {len(news_items)} items from World News API")
                 return news_items
                 
+    except asyncio.TimeoutError:
+        logger.warning("Timeout while fetching from World News API")
+        return []
     except Exception as e:
         logger.error(f"Error fetching from World News API: {str(e)}")
         return []
@@ -197,17 +201,19 @@ async def fetch_world_news(category: Optional[str] = None) -> List[Dict]:
 async def fetch_rss_feeds() -> List[Dict]:
     """Fetch news from RSS feeds"""
     all_entries = []
-    async with aiohttp.ClientSession() as session:
+    timeout = aiohttp.ClientTimeout(total=30)  # Increase total timeout to 30 seconds
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         for source, url in RSS_FEEDS.items():
             try:
-                async with session.get(url, timeout=5) as response:
+                async with session.get(url, timeout=10) as response:  # Increase per-request timeout
                     if response.status != 200:
+                        logger.warning(f"Failed to fetch RSS feed {source}: Status {response.status}")
                         continue
                         
                     feed_content = await response.text()
                     feed = feedparser.parse(feed_content)
                     
-                    for entry in feed.entries[:20]:  # Limit to 20 entries per source
+                    for entry in feed.entries[:10]:  # Reduce entries per source to improve speed
                         try:
                             # Extract image if not present in feed
                             image_url = None
@@ -216,7 +222,8 @@ async def fetch_rss_feeds() -> List[Dict]:
                             elif hasattr(entry, 'media_thumbnail'):
                                 image_url = entry.media_thumbnail[0]['url']
                             else:
-                                image_url = await extract_image_with_timeout(session, entry.link)
+                                # Skip image extraction if not readily available
+                                image_url = None
                             
                             published_at = datetime(*entry.published_parsed[:6]) if hasattr(entry, 'published_parsed') else datetime.now()
                             
@@ -235,6 +242,9 @@ async def fetch_rss_feeds() -> List[Dict]:
                             logger.error(f"Error processing entry from {source}: {str(e)}")
                             continue
                             
+            except asyncio.TimeoutError:
+                logger.warning(f"Timeout while fetching RSS feed {source}")
+                continue
             except Exception as e:
                 logger.error(f"Error fetching RSS feed {source}: {str(e)}")
                 continue
