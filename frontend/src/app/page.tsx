@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import axios from 'axios';
 import Head from 'next/head';
 
@@ -270,75 +270,125 @@ function LoadingSkeleton() {
   );
 }
 
-// Add QuickUpdates component
-function QuickUpdates() {
-  const [updates, setUpdates] = useState<NewsItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+// Update the constants at the top
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY = 1000; // 1 second
+const MAX_RETRY_DELAY = 10000; // 10 seconds
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const MAX_CACHE_SIZE = 50; // Maximum number of cached responses
+const API_TIMEOUT = 15000; // 15 seconds timeout for API requests
+const INITIAL_LOAD_TIMEOUT = 30000; // 30 seconds timeout for initial load
 
-  useEffect(() => {
-    const fetchUpdates = async () => {
-      try {
-        const response = await axios.get(`${API_URL}/api/news?category=sports&limit=5`);
-        setUpdates(response.data);
-        setLoading(false);
-      } catch (err) {
-        setError('שגיאה בטעינת עדכונים');
-        setLoading(false);
-      }
-    };
-
-    fetchUpdates();
-    // Refresh updates every 5 minutes
-    const interval = setInterval(fetchUpdates, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="w-full bg-[#232d3e] rounded-lg p-4 animate-pulse">
-        <div className="h-4 bg-[#2a3447] rounded w-3/4 mb-4"></div>
-        <div className="h-4 bg-[#2a3447] rounded w-1/2 mb-4"></div>
-        <div className="h-4 bg-[#2a3447] rounded w-2/3"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return <div className="text-red-400 text-sm">{error}</div>;
-  }
-
-  return (
-    <div className="w-full bg-[#232d3e] rounded-lg p-4">
-      <h3 className="text-accent text-lg font-bold mb-4">עדכונים מהירים</h3>
-      <div className="space-y-3">
-        {updates.map((item, idx) => (
-          <a
-            key={item.url + idx}
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block hover:bg-[#2a3447] p-2 rounded transition-colors"
-          >
-            <div className="text-sm text-text mb-1">{item.title}</div>
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-accent">{item.source}</span>
-              {item.published_at && (
-                <span className="text-xs text-gray-400">
-                  {new Date(item.published_at).toLocaleTimeString('he-IL', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </span>
-              )}
-            </div>
-          </a>
-        ))}
-      </div>
-    </div>
-  );
+interface CacheEntry {
+  data: NewsItem[];
+  timestamp: number;
+  size: number;
 }
 
+interface Cache {
+  [key: string]: CacheEntry;
+}
+
+// Add this utility function before the fetchNews function
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const verifyEndpoint = async (url: string): Promise<boolean> => {
+  try {
+    const response = await axios.head(url, { timeout: 5000 });
+    return response.status === 200;
+  } catch (error) {
+    console.error('Endpoint verification failed:', error);
+    return false;
+  }
+};
+
+// Add these debug constants
+const DEBUG = true;
+const PERFORMANCE_MARKS: { [key: string]: number } = {};
+
+// Add debug utility functions
+const debugLog = (message: string, data?: any) => {
+  if (!DEBUG) return;
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] ${message}`, data ? data : '');
+};
+
+const markPerformance = (mark: string) => {
+  if (!DEBUG) return;
+  PERFORMANCE_MARKS[mark] = performance.now();
+};
+
+const measurePerformance = (start: string, end: string) => {
+  if (!DEBUG || !PERFORMANCE_MARKS[start] || !PERFORMANCE_MARKS[end]) return 0;
+  return PERFORMANCE_MARKS[end] - PERFORMANCE_MARKS[start];
+};
+
+// Update fetchWithRetry with detailed debugging
+const fetchWithRetry = async (url: string, options: any, retryCount = 0): Promise<NewsItem[]> => {
+  const requestId = Math.random().toString(36).substring(7);
+  markPerformance(`request-start-${requestId}`);
+  debugLog(`Starting request ${requestId} to ${url}`, {
+    retryCount,
+    timeout: options.timeout,
+    headers: options.headers
+  });
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      debugLog(`Request ${requestId} aborted due to timeout after ${options.timeout}ms`);
+    }, options.timeout);
+
+    const response = await axios.get<NewsItem[]>(url, {
+      ...options,
+      signal: controller.signal,
+      timeout: options.timeout,
+      headers: {
+        ...options.headers,
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'X-Request-ID': requestId
+      }
+    });
+
+    clearTimeout(timeoutId);
+    markPerformance(`request-end-${requestId}`);
+    const duration = measurePerformance(`request-start-${requestId}`, `request-end-${requestId}`);
+    
+    debugLog(`Request ${requestId} successful`, {
+      duration: `${duration.toFixed(2)}ms`,
+      status: response.status,
+      dataSize: JSON.stringify(response.data).length
+    });
+
+    return response.data;
+  } catch (error: any) {
+    markPerformance(`request-error-${requestId}`);
+    const duration = measurePerformance(`request-start-${requestId}`, `request-error-${requestId}`);
+
+    debugLog(`Request ${requestId} failed`, {
+      duration: `${duration.toFixed(2)}ms`,
+      error: {
+        code: error.code,
+        message: error.message,
+        status: error.response?.status,
+        isTimeout: error.code === 'ECONNABORTED'
+      }
+    });
+
+    if (retryCount < MAX_RETRIES) {
+      const delay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, retryCount), MAX_RETRY_DELAY);
+      debugLog(`Request ${requestId} scheduling retry ${retryCount + 1}/${MAX_RETRIES} after ${delay}ms`);
+      await sleep(delay);
+      return fetchWithRetry(url, options, retryCount + 1);
+    }
+
+    throw error;
+  }
+};
+
+// Update the Home component
 export default function Home() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [trending, setTrending] = useState<NewsItem[]>([]);
@@ -353,111 +403,256 @@ export default function Home() {
   const categoryBarRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const cacheRef = useRef<Cache>({});
 
-  // Enhanced cache with TTL and size limit
-  const cache = useRef<{
-    [key: string]: {
-      data: NewsItem[];
-      timestamp: number;
-      size: number;
-    };
-  }>({});
+  // Create a memoized fetchNews function that has access to cacheRef
+  const fetchNews = useCallback(async (category: string, pageNum: number): Promise<NewsItem[]> => {
+    const fetchId = `${category}-${pageNum}-${Date.now()}`;
+    markPerformance(`fetch-start-${fetchId}`);
+    debugLog(`Starting news fetch ${fetchId}`, { category, page: pageNum });
 
-  const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-  const MAX_CACHE_SIZE = 50; // Maximum number of cached responses
-
-  const fetchNews = async (category: string, pageNum: number) => {
     const cacheKey = `${category}-${pageNum}`;
-    const cachedData = cache.current[cacheKey];
-    const now = Date.now();
-    
-    // Use cached data if it's fresh
-    if (cachedData && now - cachedData.timestamp < CACHE_TTL) {
-      console.log(`[Performance] Using cached data for ${category} page ${pageNum}`);
+    const cachedData = cacheRef.current[cacheKey];
+    const currentTime = Date.now();
+
+    if (cachedData && currentTime - cachedData.timestamp < CACHE_TTL) {
+      debugLog(`Using cached data for ${fetchId}`, {
+        age: `${((currentTime - cachedData.timestamp) / 1000).toFixed(2)}s`,
+        size: cachedData.size
+      });
       return cachedData.data;
     }
 
-    console.log(`[Performance] Fetching ${category} page ${pageNum}...`);
-    const startTime = performance.now();
-
     try {
-      // Add timeout to prevent hanging requests
-      const response = await axios.get(
-        `${API_URL}/api/news${category !== 'all' ? `?category=${category}` : ''}&page=${pageNum}`,
-        { 
-          timeout: 5000, // 5 second timeout
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
+      const url = new URL(`${API_URL}/api/news`);
+      if (category !== 'all') {
+        url.searchParams.append('category', category);
+      }
+      url.searchParams.append('page', pageNum.toString());
+
+      debugLog(`Fetching fresh data for ${fetchId}`, {
+        url: url.toString(),
+        timeout: API_TIMEOUT
+      });
+
+      const response = await fetchWithRetry(url.toString(), {
+        timeout: API_TIMEOUT,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'X-Fetch-ID': fetchId
         }
-      );
-      
-      const endTime = performance.now();
-      console.log(`[Performance] API Response time: ${(endTime - startTime).toFixed(2)}ms`);
-      console.log(`[Performance] Response size: ${JSON.stringify(response.data).length} bytes`);
-      
+      });
+
+      markPerformance(`fetch-end-${fetchId}`);
+      const duration = measurePerformance(`fetch-start-${fetchId}`, `fetch-end-${fetchId}`);
+
       // Clean up old cache entries if needed
-      const cacheEntries = Object.entries(cache.current);
+      const cacheEntries = Object.entries(cacheRef.current) as [string, CacheEntry][];
       if (cacheEntries.length >= MAX_CACHE_SIZE) {
         const oldestEntry = cacheEntries.sort((a, b) => a[1].timestamp - b[1].timestamp)[0];
-        delete cache.current[oldestEntry[0]];
+        delete cacheRef.current[oldestEntry[0]];
       }
-      
+
       // Cache the response
-      cache.current[cacheKey] = {
-        data: response.data,
-        timestamp: now,
-        size: JSON.stringify(response.data).length
+      cacheRef.current[cacheKey] = {
+        data: response,
+        timestamp: currentTime,
+        size: JSON.stringify(response).length
       };
-      
-      return response.data;
-    } catch (error) {
-      const endTime = performance.now();
-      console.error(`[Performance] API Error after ${(endTime - startTime).toFixed(2)}ms:`, error);
+
+      debugLog(`Fetch ${fetchId} successful`, {
+        duration: `${duration.toFixed(2)}ms`,
+        itemCount: response.length,
+        cached: true
+      });
+
+      return response;
+    } catch (error: any) {
+      markPerformance(`fetch-error-${fetchId}`);
+      const duration = measurePerformance(`fetch-start-${fetchId}`, `fetch-error-${fetchId}`);
+
+      debugLog(`Fetch ${fetchId} failed`, {
+        duration: `${duration.toFixed(2)}ms`,
+        error: {
+          code: error.code,
+          message: error.message,
+          status: error.response?.status
+        }
+      });
+
+      if (cachedData) {
+        debugLog(`Using stale cache for ${fetchId}`, {
+          age: `${((currentTime - cachedData.timestamp) / 1000).toFixed(2)}s`
+        });
+        return cachedData.data;
+      }
+
       throw error;
     }
-  };
+  }, []);
 
-  // Add performance monitoring for initial load
+  // Create QuickUpdates component with access to fetchNews
+  const QuickUpdates = useCallback(() => {
+    const [category, setCategory] = useState<'general' | 'sports'>('general');
+    const [updates, setUpdates] = useState<NewsItem[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    useEffect(() => {
+      const fetchUpdates = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const response = await fetchNews(category, 1);
+          setUpdates(response.slice(0, 5));
+          setLoading(false);
+        } catch (err: any) {
+          console.error('Error fetching updates:', err);
+          setError(err.response?.status === 404 
+            ? 'השרת לא זמין כרגע. אנא נסה שוב מאוחר יותר.'
+            : 'שגיאה בטעינת עדכונים');
+          setLoading(false);
+        }
+      };
+
+      fetchUpdates();
+      const interval = setInterval(fetchUpdates, 5 * 60 * 1000);
+      return () => clearInterval(interval);
+    }, [category]);
+
+    return (
+      <>
+        {/* Backdrop when expanded */}
+        {isExpanded && (
+          <div 
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => setIsExpanded(false)}
+          />
+        )}
+        
+        {/* QuickUpdates Panel */}
+        <div 
+          className={`fixed left-0 top-0 h-full bg-[#232d3e] transition-transform duration-300 ease-in-out z-50 shadow-xl ${
+            isExpanded ? 'translate-x-0' : '-translate-x-full'
+          }`}
+          style={{ width: '300px' }}
+        >
+          {/* Toggle Button */}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="absolute -right-10 top-4 bg-accent text-bg p-2 rounded-r-lg shadow-lg hover:bg-accent/90 transition-colors"
+            aria-label={isExpanded ? 'הסתר עדכונים מהירים' : 'הצג עדכונים מהירים'}
+          >
+            {isExpanded ? '←' : '→'}
+          </button>
+
+          <div className="p-4 h-full overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-accent text-lg font-bold">עדכונים מהירים</h3>
+              <div className="flex gap-2">
+                <button
+                  className={`px-2 py-1 rounded text-xs font-bold transition-colors ${category === 'general' ? 'bg-accent text-bg' : 'bg-[#2a3447] text-accent'}`}
+                  onClick={() => setCategory('general')}
+                >כללי</button>
+                <button
+                  className={`px-2 py-1 rounded text-xs font-bold transition-colors ${category === 'sports' ? 'bg-accent text-bg' : 'bg-[#2a3447] text-accent'}`}
+                  onClick={() => setCategory('sports')}
+                >ספורט</button>
+              </div>
+            </div>
+            {loading ? (
+              <div className="animate-pulse">
+                <div className="h-4 bg-[#2a3447] rounded w-3/4 mb-4"></div>
+                <div className="h-4 bg-[#2a3447] rounded w-1/2 mb-4"></div>
+                <div className="h-4 bg-[#2a3447] rounded w-2/3"></div>
+              </div>
+            ) : error ? (
+              <div className="text-red-400 text-sm">{error}</div>
+            ) : (
+              <div className="space-y-3">
+                {updates.map((item, idx) => (
+                  <a
+                    key={item.url + idx}
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block hover:bg-[#2a3447] p-2 rounded transition-colors"
+                  >
+                    <div className="text-sm text-text mb-1">{item.title}</div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-accent">{item.source}</span>
+                      {item.published_at && (
+                        <span className="text-xs text-gray-400">
+                          {new Date(item.published_at).toLocaleTimeString('he-IL', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      )}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }, [fetchNews]);
+
+  // Update the initial load effect
   useEffect(() => {
-    const pageLoadStartTime = performance.now();
-    console.log('[Performance] Page load started');
+    const loadId = `initial-load-${Date.now()}`;
+    markPerformance(`load-start-${loadId}`);
+    debugLog(`Starting initial load ${loadId}`, { category: selectedCategory });
 
     setLoading(true);
     setNewsError(null);
     setPage(1);
     setHasMore(true);
-    
-    // Load initial data with timeout
+
     const timeoutId = setTimeout(() => {
       if (loading) {
-        const timeoutTime = performance.now() - pageLoadStartTime;
-        console.error(`[Performance] Initial load timeout after ${timeoutTime.toFixed(2)}ms`);
+        markPerformance(`load-timeout-${loadId}`);
+        const duration = measurePerformance(`load-start-${loadId}`, `load-timeout-${loadId}`);
+        debugLog(`Initial load ${loadId} timed out`, {
+          duration: `${duration.toFixed(2)}ms`,
+          timeout: INITIAL_LOAD_TIMEOUT
+        });
         setLoading(false);
-        setNewsError('Request timed out. Please try again.');
+        setNewsError('הבקשה ארכה זמן רב מדי. אנא נסה שוב.');
       }
-    }, 10000); // 10 second timeout for initial load
-    
+    }, INITIAL_LOAD_TIMEOUT);
+
     fetchNews(selectedCategory, 1)
-      .then((data) => {
+      .then((data: NewsItem[]) => {
         clearTimeout(timeoutId);
-        const totalLoadTime = performance.now() - pageLoadStartTime;
-        console.log(`[Performance] Total initial load time: ${totalLoadTime.toFixed(2)}ms`);
+        markPerformance(`load-end-${loadId}`);
+        const duration = measurePerformance(`load-start-${loadId}`, `load-end-${loadId}`);
+        debugLog(`Initial load ${loadId} successful`, {
+          duration: `${duration.toFixed(2)}ms`,
+          itemCount: data.length
+        });
         setNews(data);
         setLoading(false);
         setHasMore(data.length === 21);
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         clearTimeout(timeoutId);
-        const errorTime = performance.now() - pageLoadStartTime;
-        console.error(`[Performance] Error after ${errorTime.toFixed(2)}ms:`, err);
+        markPerformance(`load-error-${loadId}`);
+        const duration = measurePerformance(`load-start-${loadId}`, `load-error-${loadId}`);
+        debugLog(`Initial load ${loadId} failed`, {
+          duration: `${duration.toFixed(2)}ms`,
+          error: err
+        });
         setNewsError(err.message || 'שגיאה בטעינת חדשות');
         setLoading(false);
       });
-      
+
     return () => clearTimeout(timeoutId);
-  }, [selectedCategory]);
+  }, [selectedCategory, fetchNews]);
 
   // Infinite scroll setup
   useEffect(() => {
@@ -543,10 +738,7 @@ export default function Home() {
   const safeTrending = Array.isArray(trending) ? trending.filter(item => item && item.title && item.url) : [];
 
   return (
-    <div
-      className="min-h-screen bg-gradient-to-br from-bg via-[#202a3a] to-[#232d3e] text-text font-main flex flex-col items-center justify-start px-2 sm:px-0"
-      dir="rtl"
-    >
+    <div className="min-h-screen bg-gradient-to-br from-bg via-[#202a3a] to-[#232d3e] text-text font-main flex flex-col items-center justify-start px-2 sm:px-0" dir="rtl">
       <Head>
         <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2254073111476495" crossOrigin="anonymous"></script>
       </Head>
@@ -594,105 +786,55 @@ export default function Home() {
           data-ad-slot="1234567890"></ins> */}
       </aside>
 
-      {/* Main Content with Side Feed */}
-      <div className="w-full max-w-7xl mx-auto flex flex-col lg:flex-row gap-8 px-4">
-        {/* Main Content */}
-        <div className="flex-1">
-          {/* Trending Section */}
-          <section className="w-full mb-8">
-            {trendingError ? (
-              <div className="text-center text-red-400 text-lg">שגיאה בטעינת טרנדים: {trendingError}</div>
-            ) : safeTrending.length > 0 && (
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                justifyContent: 'center',
-                alignItems: 'stretch',
-                gap: '16px',
-                padding: '0 8px',
-                width: '100%',
-                boxSizing: 'border-box',
-              }}>
-                {safeTrending.slice(0, 3).map((item, idx) => (
-                  <NewsCard key={item.url + idx} item={item} />
-                ))}
+      {/* Main Content */}
+      <div className="w-full max-w-7xl mx-auto px-4">
+        {/* Trending Section */}
+        <section className="w-full mb-8">
+          {trendingError ? (
+            <div className="text-center text-red-400 text-lg">שגיאה בטעינת טרנדים: {trendingError}</div>
+          ) : safeTrending.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-4">
+              {safeTrending.slice(0, 3).map((item, idx) => (
+                <NewsCard key={item.url + idx} item={item} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* News Feed */}
+        <main className="flex-1 w-full pb-8">
+          {newsError ? (
+            <div className="text-center text-red-400 text-lg mt-16">שגיאה בטעינת חדשות: {newsError}</div>
+          ) : loading ? (
+            <LoadingSkeleton />
+          ) : safeFilteredNews.length === 0 ? (
+            <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
+          ) : (
+            <>
+              <div className="flex flex-wrap justify-center gap-4">
+                {safeFilteredNews.flatMap((item, idx) => {
+                  const elements = [];
+                  if (idx > 0 && idx % 8 === 0) elements.push(<AdCard key={`ad-${idx}`} />);
+                  elements.push(<NewsCard key={item.url + idx} item={item} />);
+                  return elements;
+                })}
               </div>
-            )}
-          </section>
-
-          {/* Category Bar */}
-          <div
-            ref={categoryBarRef}
-            className="sticky top-0 z-50 bg-[#232d3e] shadow-lg mb-8 py-4 px-4"
-          >
-            {/* ... existing category bar content ... */}
-          </div>
-
-          {/* News Feed */}
-          <main className="flex-1 w-full pb-8">
-            {newsError ? (
-              <div className="text-center text-red-400 text-lg mt-16">שגיאה בטעינת חדשות: {newsError}</div>
-            ) : loading ? (
-              <LoadingSkeleton />
-            ) : safeFilteredNews.length === 0 ? (
-              <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
-            ) : (
-              <>
-                <div style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  justifyContent: 'center',
-                  alignItems: 'stretch',
-                  gap: '16px',
-                  padding: '0 8px',
-                  width: '100%',
-                  boxSizing: 'border-box',
-                }}>
-                  {safeFilteredNews.flatMap((item, idx) => {
-                    const elements = [];
-                    if (idx > 0 && idx % 8 === 0) elements.push(<AdCard key={`ad-${idx}`} />);
-                    elements.push(<NewsCard key={item.url + idx} item={item} />);
-                    return elements;
-                  })}
+              {hasMore && (
+                <div ref={loadMoreRef} className="w-full flex justify-center mt-8">
+                  {isLoadingMore ? (
+                    <div className="animate-pulse" style={{ width: '40px', height: '40px', border: '4px solid #3ed6c1', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                  ) : null}
                 </div>
-                {hasMore && (
-                  <div ref={loadMoreRef} className="w-full flex justify-center mt-8">
-                    {isLoadingMore ? (
-                      <div className="animate-pulse" style={{ width: '40px', height: '40px', border: '4px solid #3ed6c1', borderTopColor: 'transparent', borderRadius: '50%' }} />
-                    ) : null}
-                  </div>
-                )}
-              </>
-            )}
-          </main>
-        </div>
-
-        {/* Side Feed */}
-        <div className="w-full lg:w-80 flex-shrink-0">
-          <div className="sticky top-24">
-            <QuickUpdates />
-          </div>
-        </div>
+              )}
+            </>
+          )}
+        </main>
       </div>
 
+      {/* QuickUpdates as overlay */}
+      <QuickUpdates />
+
       <BackToTopButton />
-
-      {/* Taboola widget slot - below news grid */}
-      <section className="w-full max-w-4xl mx-auto my-8">
-        {/* Taboola widget code here. Replace with your publisher ID. */}
-        {/* <div id="taboola-below-article-thumbnails"></div>
-        <script type="text/javascript">
-          window._taboola = window._taboola || [];
-          _taboola.push({
-            mode: 'thumbnails-b',
-            container: 'taboola-below-article-thumbnails',
-            placement: 'Below Article Thumbnails',
-            target_type: 'mix'
-          });
-        </script> */}
-      </section>
-
-      {/* NOTE: Ad revenue is managed via your AdSense/Taboola dashboards. Direct PayPal payout per click is not possible via code. */}
     </div>
   );
 } 
