@@ -295,109 +295,16 @@ class FeedAggregator:
         self.trends_client = TrendReq(hl='he-IL', tz=120)  # Hebrew language, Israel timezone
         
         # News API configuration
-        self.news_api_key = os.getenv("NEWS_API_KEY", "0ee8ffe339ff499d95e48ba8d2441b0d")  # Fallback to existing key
+        self.news_api_key = os.getenv("NEWS_API_KEY")
         self.news_api_base_url = "https://newsapi.org/v2"
         
-        # Configure RSS feeds for Israeli news sources with content selectors
-        self.rss_feeds = {
-            'ynet': {
-                'url': 'https://www.ynet.co.il/Integration/StoryRss2.xml',
-                'category': 'general',
-                'content_selector': '.text14, .article-body, .main-content',  # Ynet uses .text14 for main text
-                'image_selector': '.main-image img, .article-image img',
-                'author_selector': '.author-name, .byline'
-            },
-            'walla': {
-                'url': 'https://rss.walla.co.il/feed/1',
-                'category': 'general',
-                'content_selector': '.article-content, .main-content',
-                'image_selector': '.article-main-image img, .main-image img',
-                'author_selector': '.author-name, .byline'
-            },
-            'mako': {
-                'url': 'https://www.mako.co.il/rss/feed-news.xml',
-                'category': 'general',
-                'content_selector': '.article-body, .main-content',
-                'image_selector': '.article-image img, .main-image img',
-                'author_selector': '.author-name, .byline'
-            },
-            'n12': {
-                'url': 'https://www.mako.co.il/rss/feed-news.xml',
-                'category': 'general',
-                'content_selector': '.article-body, .main-content',
-                'image_selector': '.article-image img, .main-image img',
-                'author_selector': '.author-name, .byline'
-            },
-            'kan': {
-                'url': 'https://www.kan.org.il/feed/',
-                'category': 'general',
-                'content_selector': '.article-content, .main-content',
-                'image_selector': '.article-image img, .main-image img',
-                'author_selector': '.author-name, .byline'
-            },
-            'haaretz': {
-                'url': 'https://www.haaretz.co.il/cmlink/1.161',
-                'category': 'general',
-                'content_selector': '.article-body, .main-content',
-                'image_selector': '.article-image img, .main-image img',
-                'author_selector': '.author-name, .byline'
-            },
-            'israelhayom': {
-                'url': 'https://www.israelhayom.co.il/rss.xml',
-                'category': 'general',
-                'content_selector': '.article-content, .main-content',
-                'image_selector': '.main-image img, .article-image img',
-                'author_selector': '.author-name, .byline'
-            },
-            'globes': {
-                'url': 'https://www.globes.co.il/webservice/rss/mainfeed.xml',
-                'category': 'business',
-                'content_selector': '.article-body, .main-content',
-                'image_selector': '.main-image img, .article-image img',
-                'author_selector': '.author-name, .byline'
-            },
-            'calcalist': {
-                'url': 'https://www.calcalist.co.il/home/0,7340,L-8,00.xml',
-                'category': 'business',
-                'content_selector': '.article-content, .main-content',
-                'image_selector': '.main-image img, .article-image img',
-                'author_selector': '.author-name, .byline'
-            },
-            'maariv': {
-                'url': 'https://www.maariv.co.il/rssfeed/1',
-                'category': 'general',
-                'content_selector': '.article-content, .main-content',
-                'image_selector': '.main-image img, .article-image img',
-                'author_selector': '.author-name, .byline'
-            },
-            'sport5': {
-                'url': 'https://www.sport5.co.il/rss.aspx?FolderID=604',
-                'category': 'sports',
-                'content_selector': '.article-content, .main-content',
-                'image_selector': '.main-image img, .article-image img',
-                'author_selector': '.author-name, .byline'
-            },
-            'timesofisrael': {
-                'url': 'https://www.timesofisrael.com/feed/',
-                'category': 'general',
-                'content_selector': '.article-content, .main-content',
-                'image_selector': '.article-image img, .main-image img',
-                'author_selector': '.author-name, .byline'
-            },
-            'jpost': {
-                'url': 'https://www.jpost.com/Rss/RssFeedsHeadlines.aspx',
-                'category': 'general',
-                'content_selector': '.article-text, .main-content',
-                'image_selector': '.article-image img, .main-image img',
-                'author_selector': '.author-name, .byline'
-            },
-        }
-
-        # Cache for storing fetched data
+        # Cache for storing fetched data with shorter expiry
         self._cache = {
             'news': [],
             'trends': [],
-            'last_update': None
+            'last_update': None,
+            'trending_news': [],
+            'trending_last_update': None
         }
 
         # Human-readable source names
@@ -647,23 +554,106 @@ class FeedAggregator:
         """
         now = datetime.now()
         
-        # Check if cache is expired (older than 3 minutes)
-        if (not self._cache['last_update'] or 
-            now - self._cache['last_update'] > timedelta(minutes=3)):
+        try:
+            # Check if cache is expired (older than 2 minutes)
+            if (not self._cache['last_update'] or 
+                now - self._cache['last_update'] > timedelta(minutes=2)):
+                
+                # Fetch RSS feeds first as they're more reliable
+                rss_news = await self.fetch_rss_feeds()
+                
+                # Only try News API if RSS feeds didn't provide enough items
+                news_api_news = []
+                if len(rss_news) < 20:
+                    try:
+                        news_api_news = await self.fetch_news_api()
+                    except Exception as e:
+                        logger.warning(f"News API fetch failed, continuing with RSS only: {e}")
+                
+                # Update cache
+                self._cache.update({
+                    'news': rss_news + news_api_news,
+                    'last_update': now
+                })
             
-            # Fetch new data
-            rss_news = await self.fetch_rss_feeds()
-            news_api_news = await self.fetch_news_api()
-            trends = await self.fetch_google_trends()
+            return self._cache
             
-            # Update cache
-            self._cache = {
-                'news': rss_news + news_api_news,
-                'trends': trends,
-                'last_update': now
+        except Exception as e:
+            logger.error(f"Error in get_latest_data: {e}")
+            # Return last cached data if available, empty lists if not
+            return {
+                'news': self._cache.get('news', []),
+                'trends': self._cache.get('trends', []),
+                'last_update': self._cache.get('last_update')
             }
+
+    async def get_trending_news(self) -> List[Dict[str, Any]]:
+        """
+        Get trending news with caching and fallback
+        """
+        now = datetime.now()
         
-        return self._cache 
+        try:
+            # Check if trending cache is expired (older than 5 minutes)
+            if (not self._cache['trending_last_update'] or 
+                now - self._cache['trending_last_update'] > timedelta(minutes=5)):
+                
+                # Start with most read RSS feeds as they're more reliable
+                most_read_feeds = {
+                    'ynet': 'https://www.ynet.co.il/Integration/StoryRss1854.xml',
+                    'mako': 'https://rcs.mako.co.il/rssPopular.xml',
+                    'walla': 'https://rss.walla.co.il/feed/22',
+                    'n12': 'https://www.mako.co.il/rss/most-popular.xml'
+                }
+                
+                trending_news = []
+                async with aiohttp.ClientSession() as session:
+                    for source, url in most_read_feeds.items():
+                        try:
+                            async with session.get(url, timeout=5) as response:
+                                if response.status == 200:
+                                    feed_content = await response.text()
+                                    feed = feedparser.parse(feed_content)
+                                    
+                                    for entry in feed.entries[:5]:
+                                        # Use simple image extraction to avoid timeouts
+                                        image_url = None
+                                        if hasattr(entry, 'media_content'):
+                                            image_url = entry.media_content[0]['url']
+                                        elif hasattr(entry, 'media_thumbnail'):
+                                            image_url = entry.media_thumbnail[0]['url']
+                                        
+                                        trending_news.append({
+                                            'title': entry.title,
+                                            'url': entry.link,
+                                            'source': source,
+                                            'image_url': image_url,
+                                            'published_at': entry.published if hasattr(entry, 'published') else None,
+                                            'type': 'rss-most-read'
+                                        })
+                        except Exception as e:
+                            logger.warning(f"Error fetching trending feed {source}: {e}")
+                            continue
+                
+                # Only update cache if we got some results
+                if trending_news:
+                    self._cache.update({
+                        'trending_news': trending_news,
+                        'trending_last_update': now
+                    })
+                    return trending_news
+                
+                # If no new results, return cached data if available
+                if self._cache['trending_news']:
+                    return self._cache['trending_news']
+                
+                # Last resort: return recent news items as trending
+                return self._cache.get('news', [])[:10]
+                
+        except Exception as e:
+            logger.error(f"Error in get_trending_news: {e}")
+            # Return cached trending news or recent news as fallback
+            return self._cache.get('trending_news', []) or self._cache.get('news', [])[:10]
 
     async def fetch_trending_news(self) -> List[Dict[str, Any]]:
         """
