@@ -1,6 +1,6 @@
 import feedparser
 from pytrends.request import TrendReq
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
 import os
@@ -9,6 +9,7 @@ import requests
 from bs4 import BeautifulSoup
 import aiohttp
 import asyncio
+from urllib.parse import urlparse
 
 load_dotenv()
 
@@ -42,6 +43,241 @@ def translate_to_english(text: str) -> str:
 
 # In-memory cache for AI images
 AI_IMAGE_CACHE = {}
+
+# API Configuration
+WORLD_NEWS_API_KEY = os.getenv('WORLD_NEWS_API_KEY')
+WORLD_NEWS_BASE_URL = 'https://api.worldnewsapi.com/search-news'
+
+# Default World News API parameters
+WORLD_NEWS_PARAMS = {
+    'country': 'il',
+    'language': 'he,en',
+    'sort': 'publish-time',
+    'sort-direction': 'desc',
+    'number': 20,  # Reduced from 100 to optimize performance
+}
+
+# Valid categories for filtering
+VALID_CATEGORIES = {
+    'politics', 'business', 'health', 'technology', 
+    'sports', 'entertainment', 'world', 'israel'
+}
+
+# RSS Feed URLs
+RSS_FEEDS = {
+    'ynet': 'http://www.ynet.co.il/Integration/StoryRss2.xml',
+    'mako': 'https://www.mako.co.il/RSS/RSSNewsFlash.xml',
+    'walla': 'https://rss.walla.co.il/feed/1',
+    'n12': 'https://www.n12.co.il/rss/news',
+    'haaretz': 'https://www.haaretz.co.il/srv/rss',
+}
+
+class NewsAPIError(Exception):
+    """Custom exception for News API related errors"""
+    pass
+
+async def extract_image_with_timeout(session: aiohttp.ClientSession, url: str, timeout: int = 3) -> Optional[str]:
+    """
+    Extract the main image from an article URL with timeout
+    """
+    try:
+        logger.info(f"Attempting to extract image from: {url}")
+        async with session.get(url, timeout=timeout) as response:
+            if response.status != 200:
+                logger.warning(f"Failed to fetch {url}: Status {response.status}")
+                return None
+                
+            html = await response.text()
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Try different methods to find the main image
+            image = None
+            
+            # Method 1: Open Graph image
+            og_image = soup.find('meta', property='og:image')
+            if og_image and og_image.get('content'):
+                image = og_image['content']
+                logger.info(f"Found OG image for {url}")
+                
+            # Method 2: Twitter image
+            if not image:
+                twitter_image = soup.find('meta', property='twitter:image')
+                if twitter_image and twitter_image.get('content'):
+                    image = twitter_image['content']
+                    logger.info(f"Found Twitter image for {url}")
+            
+            # Method 3: First large image in article
+            if not image:
+                for img in soup.find_all('img'):
+                    src = img.get('src', '')
+                    if src and (
+                        'article' in src.lower() or 
+                        'news' in src.lower() or 
+                        any(dim in src for dim in ['1200', '800', '700', '600'])
+                    ):
+                        image = src
+                        logger.info(f"Found large content image for {url}")
+                        break
+            
+            return image
+
+    except asyncio.TimeoutError:
+        logger.warning(f"Timeout while extracting image from {url}")
+        return None
+    except Exception as e:
+        logger.error(f"Error extracting image from {url}: {str(e)}")
+        return None
+
+def format_world_news_item(item: Dict) -> Dict:
+    """Format a World News API item into our standard structure"""
+    return {
+        'title': item.get('title', ''),
+        'source': item.get('source', ''),
+        'url': item.get('url', ''),
+        'published_at': item.get('publish_date', ''),
+        'summary': item.get('text', ''),
+        'image_url': item.get('image', ''),
+        'category': item.get('category', []),
+    }
+
+def get_time_window_params() -> Dict:
+    """Get the time window parameters for the last 24 hours"""
+    now = datetime.utcnow()
+    earliest = now - timedelta(days=1)
+    return {
+        'earliest-publish-date': earliest.strftime('%Y-%m-%d %H:%M:%S'),
+        'latest-publish-date': now.strftime('%Y-%m-%d %H:%M:%S'),
+    }
+
+async def fetch_world_news(category: Optional[str] = None) -> List[Dict]:
+    """Fetch news from World News API with optional category filtering"""
+    try:
+        if not WORLD_NEWS_API_KEY:
+            logger.warning("World News API key not configured, skipping API fetch")
+            return []
+            
+        # Build request parameters
+        params = WORLD_NEWS_PARAMS.copy()
+        params.update(get_time_window_params())
+        params['api-key'] = WORLD_NEWS_API_KEY
+        
+        # Add category filter if provided and valid
+        if category:
+            category = category.lower()
+            if category not in VALID_CATEGORIES:
+                logger.warning(f"Invalid category provided: {category}")
+                return []
+            params['category'] = category
+            
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                WORLD_NEWS_BASE_URL,
+                params=params,
+                timeout=10
+            ) as response:
+                if response.status == 429:
+                    logger.error("World News API rate limit exceeded")
+                    return []
+                    
+                response.raise_for_status()
+                data = await response.json()
+                
+                news_items = [
+                    format_world_news_item(item)
+                    for item in data.get('news', [])
+                ]
+                
+                logger.info(f"Fetched {len(news_items)} items from World News API")
+                return news_items
+                
+    except Exception as e:
+        logger.error(f"Error fetching from World News API: {str(e)}")
+        return []
+
+async def fetch_rss_feeds() -> List[Dict]:
+    """Fetch news from RSS feeds"""
+    all_entries = []
+    async with aiohttp.ClientSession() as session:
+        for source, url in RSS_FEEDS.items():
+            try:
+                async with session.get(url, timeout=5) as response:
+                    if response.status != 200:
+                        continue
+                        
+                    feed_content = await response.text()
+                    feed = feedparser.parse(feed_content)
+                    
+                    for entry in feed.entries[:20]:  # Limit to 20 entries per source
+                        try:
+                            # Extract image if not present in feed
+                            image_url = None
+                            if hasattr(entry, 'media_content'):
+                                image_url = entry.media_content[0]['url']
+                            elif hasattr(entry, 'media_thumbnail'):
+                                image_url = entry.media_thumbnail[0]['url']
+                            else:
+                                image_url = await extract_image_with_timeout(session, entry.link)
+                            
+                            published_at = datetime(*entry.published_parsed[:6]) if hasattr(entry, 'published_parsed') else datetime.now()
+                            
+                            news_item = {
+                                'title': entry.title,
+                                'url': entry.link,
+                                'published_at': published_at.isoformat(),
+                                'source': source,
+                                'summary': entry.get('summary', ''),
+                                'image_url': image_url,
+                                'category': entry.get('tags', []),
+                            }
+                            all_entries.append(news_item)
+                            
+                        except Exception as e:
+                            logger.error(f"Error processing entry from {source}: {str(e)}")
+                            continue
+                            
+            except Exception as e:
+                logger.error(f"Error fetching RSS feed {source}: {str(e)}")
+                continue
+                
+    return all_entries
+
+async def get_news(category: Optional[str] = None) -> List[Dict]:
+    """
+    Get news from all sources (World News API and RSS feeds)
+    """
+    # Fetch from both sources concurrently
+    world_news_task = asyncio.create_task(fetch_world_news(category))
+    rss_news_task = asyncio.create_task(fetch_rss_feeds())
+    
+    # Wait for both tasks to complete
+    world_news, rss_news = await asyncio.gather(
+        world_news_task,
+        rss_news_task,
+        return_exceptions=True
+    )
+    
+    # Handle any exceptions
+    if isinstance(world_news, Exception):
+        logger.error(f"Error fetching World News: {str(world_news)}")
+        world_news = []
+    if isinstance(rss_news, Exception):
+        logger.error(f"Error fetching RSS news: {str(rss_news)}")
+        rss_news = []
+    
+    # Combine and sort all news items
+    all_news = world_news + rss_news
+    all_news.sort(key=lambda x: x['published_at'], reverse=True)
+    
+    # Remove duplicates based on URL
+    seen_urls = set()
+    unique_news = []
+    for item in all_news:
+        if item['url'] not in seen_urls:
+            seen_urls.add(item['url'])
+            unique_news.append(item)
+    
+    logger.info(f"Total news items fetched: {len(unique_news)}")
+    return unique_news
 
 class FeedAggregator:
     def __init__(self):
