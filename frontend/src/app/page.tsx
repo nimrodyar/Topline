@@ -48,20 +48,10 @@ function NewsCard({ item }: { item: NewsItem }) {
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
-      const now = new Date();
-      const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-      
-      if (diffInHours < 24) {
-        return `${diffInHours} שעות לפני`;
-      } else {
-        return date.toLocaleDateString('he-IL', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-      }
+      return date.toLocaleTimeString('he-IL', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
     } catch (e) {
       return '';
     }
@@ -276,6 +266,75 @@ function LoadingSkeleton() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// Add QuickUpdates component
+function QuickUpdates() {
+  const [updates, setUpdates] = useState<NewsItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchUpdates = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/api/news?category=sports&limit=5`);
+        setUpdates(response.data);
+        setLoading(false);
+      } catch (err) {
+        setError('שגיאה בטעינת עדכונים');
+        setLoading(false);
+      }
+    };
+
+    fetchUpdates();
+    // Refresh updates every 5 minutes
+    const interval = setInterval(fetchUpdates, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="w-full bg-[#232d3e] rounded-lg p-4 animate-pulse">
+        <div className="h-4 bg-[#2a3447] rounded w-3/4 mb-4"></div>
+        <div className="h-4 bg-[#2a3447] rounded w-1/2 mb-4"></div>
+        <div className="h-4 bg-[#2a3447] rounded w-2/3"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="text-red-400 text-sm">{error}</div>;
+  }
+
+  return (
+    <div className="w-full bg-[#232d3e] rounded-lg p-4">
+      <h3 className="text-accent text-lg font-bold mb-4">עדכונים מהירים</h3>
+      <div className="space-y-3">
+        {updates.map((item, idx) => (
+          <a
+            key={item.url + idx}
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block hover:bg-[#2a3447] p-2 rounded transition-colors"
+          >
+            <div className="text-sm text-text mb-1">{item.title}</div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-accent">{item.source}</span>
+              {item.published_at && (
+                <span className="text-xs text-gray-400">
+                  {new Date(item.published_at).toLocaleTimeString('he-IL', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </span>
+              )}
+            </div>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
@@ -535,77 +594,87 @@ export default function Home() {
           data-ad-slot="1234567890"></ins> */}
       </aside>
 
-      {/* Section Divider: Trending */}
-      <div className="w-full flex items-center my-8">
-        <div className="flex-grow border-t border-accent/40" />
-        <span className="mx-4 text-accent text-lg font-bold">הכי חם עכשיו</span>
-        <div className="flex-grow border-t border-accent/40" />
-      </div>
-      {/* Trending Section as Grid */}
-      <section className="w-full max-w-6xl mx-auto mb-8">
-        {trendingError ? (
-          <div className="text-center text-red-400 text-lg">שגיאה בטעינת טרנדים: {trendingError}</div>
-        ) : safeTrending.length > 0 && (
-          <div style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-            alignItems: 'stretch',
-            gap: '16px',
-            padding: '0 8px',
-            width: '100%',
-            boxSizing: 'border-box',
-          }}>
-            {safeTrending.slice(0, 3).map((item, idx) => (
-              <NewsCard key={item.url + idx} item={item} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Section Divider: News Feed */}
-      <div className="w-full flex items-center my-8">
-        <div className="flex-grow border-t border-accent/40" />
-        <span className="mx-4 text-accent text-lg font-bold">חדשות אחרונות</span>
-        <div className="flex-grow border-t border-accent/40" />
-      </div>
-      {/* News Feed as Grid */}
-      <main className="flex-1 w-full max-w-6xl mx-auto pb-8">
-        {newsError ? (
-          <div className="text-center text-red-400 text-lg mt-16">שגיאה בטעינת חדשות: {newsError}</div>
-        ) : loading ? (
-          <LoadingSkeleton />
-        ) : safeFilteredNews.length === 0 ? (
-          <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
-        ) : (
-          <>
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-              alignItems: 'stretch',
-              gap: '16px',
-              padding: '0 8px',
-              width: '100%',
-              boxSizing: 'border-box',
-            }}>
-              {safeFilteredNews.flatMap((item, idx) => {
-                const elements = [];
-                if (idx > 0 && idx % 8 === 0) elements.push(<AdCard key={`ad-${idx}`} />);
-                elements.push(<NewsCard key={item.url + idx} item={item} />);
-                return elements;
-              })}
-            </div>
-            {hasMore && (
-              <div ref={loadMoreRef} className="w-full flex justify-center mt-8">
-                {isLoadingMore ? (
-                  <div className="animate-pulse" style={{ width: '40px', height: '40px', border: '4px solid #3ed6c1', borderTopColor: 'transparent', borderRadius: '50%' }} />
-                ) : null}
+      {/* Main Content with Side Feed */}
+      <div className="w-full max-w-7xl mx-auto flex flex-col lg:flex-row gap-8 px-4">
+        {/* Main Content */}
+        <div className="flex-1">
+          {/* Trending Section */}
+          <section className="w-full mb-8">
+            {trendingError ? (
+              <div className="text-center text-red-400 text-lg">שגיאה בטעינת טרנדים: {trendingError}</div>
+            ) : safeTrending.length > 0 && (
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                alignItems: 'stretch',
+                gap: '16px',
+                padding: '0 8px',
+                width: '100%',
+                boxSizing: 'border-box',
+              }}>
+                {safeTrending.slice(0, 3).map((item, idx) => (
+                  <NewsCard key={item.url + idx} item={item} />
+                ))}
               </div>
             )}
-          </>
-        )}
-      </main>
+          </section>
+
+          {/* Category Bar */}
+          <div
+            ref={categoryBarRef}
+            className="sticky top-0 z-50 bg-[#232d3e] shadow-lg mb-8 py-4 px-4"
+          >
+            {/* ... existing category bar content ... */}
+          </div>
+
+          {/* News Feed */}
+          <main className="flex-1 w-full pb-8">
+            {newsError ? (
+              <div className="text-center text-red-400 text-lg mt-16">שגיאה בטעינת חדשות: {newsError}</div>
+            ) : loading ? (
+              <LoadingSkeleton />
+            ) : safeFilteredNews.length === 0 ? (
+              <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
+            ) : (
+              <>
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  justifyContent: 'center',
+                  alignItems: 'stretch',
+                  gap: '16px',
+                  padding: '0 8px',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}>
+                  {safeFilteredNews.flatMap((item, idx) => {
+                    const elements = [];
+                    if (idx > 0 && idx % 8 === 0) elements.push(<AdCard key={`ad-${idx}`} />);
+                    elements.push(<NewsCard key={item.url + idx} item={item} />);
+                    return elements;
+                  })}
+                </div>
+                {hasMore && (
+                  <div ref={loadMoreRef} className="w-full flex justify-center mt-8">
+                    {isLoadingMore ? (
+                      <div className="animate-pulse" style={{ width: '40px', height: '40px', border: '4px solid #3ed6c1', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                    ) : null}
+                  </div>
+                )}
+              </>
+            )}
+          </main>
+        </div>
+
+        {/* Side Feed */}
+        <div className="w-full lg:w-80 flex-shrink-0">
+          <div className="sticky top-24">
+            <QuickUpdates />
+          </div>
+        </div>
+      </div>
+
       <BackToTopButton />
 
       {/* Taboola widget slot - below news grid */}
