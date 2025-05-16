@@ -40,7 +40,51 @@ function truncateHebrewTitle(title: string, maxLength: number = 60): string {
 
 // Minimal NewsCard with image underneath text and brightness filter
 function NewsCard({ item }: { item: NewsItem }) {
+  const [imageLoaded, setImageLoaded] = useState(false);
   const hasImage = !!item.image_url;
+  const imageLoadStartTime = useRef<number>(0);
+  
+  // Format the published date
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+      
+      if (diffInHours < 24) {
+        return `${diffInHours} שעות לפני`;
+      } else {
+        return date.toLocaleDateString('he-IL', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+    } catch (e) {
+      return '';
+    }
+  };
+  
+  // Optimize image URL with size parameters and ensure trending images are loaded
+  const optimizedImageUrl = hasImage ? `${item.image_url}?w=600&q=75` : '';
+  
+  useEffect(() => {
+    if (hasImage) {
+      imageLoadStartTime.current = performance.now();
+      // Preload the image
+      const img = new Image();
+      img.src = optimizedImageUrl;
+    }
+  }, [hasImage, optimizedImageUrl]);
+
+  const handleImageLoad = () => {
+    const loadTime = performance.now() - imageLoadStartTime.current;
+    console.log(`[Performance] Image load time for ${item.title}: ${loadTime.toFixed(2)}ms`);
+    setImageLoaded(true);
+  };
+
   const cardContent = (
     <div
       className={hasImage ? "news-card-hover" : "news-card-noimg"}
@@ -49,11 +93,11 @@ function NewsCard({ item }: { item: NewsItem }) {
         borderRadius: '16px',
         overflow: 'hidden',
         margin: '16px',
-        minWidth: hasImage ? '260px' : '100%',
-        maxWidth: hasImage ? '320px' : '100%',
-        width: hasImage ? '300px' : '100%',
-        minHeight: hasImage ? '240px' : '120px',
-        height: hasImage ? '340px' : '120px',
+        minWidth: '260px',
+        maxWidth: '320px',
+        width: '300px',
+        minHeight: '240px',
+        height: '340px',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
@@ -63,27 +107,42 @@ function NewsCard({ item }: { item: NewsItem }) {
         cursor: item.url ? 'pointer' : 'default',
         textDecoration: 'none',
         padding: '0',
-        transition: 'box-shadow 0.2s',
+        transition: 'all 0.3s ease',
       }}
     >
       {hasImage && (
         <>
           <img
-            src={item.image_url || ''}
+            src={optimizedImageUrl}
             alt={item.title || ''}
             className="news-card-img"
+            loading="lazy"
+            decoding="async"
+            onLoad={handleImageLoad}
             style={{
               position: 'absolute',
               inset: 0,
               width: '100%',
               height: '100%',
               objectFit: 'cover',
-              filter: 'blur(8px) brightness(0.65)',
+              filter: imageLoaded ? 'blur(8px) brightness(0.65)' : 'blur(20px) brightness(0.5)',
               zIndex: 0,
               transition: 'filter 0.4s cubic-bezier(.4,0,.2,1)',
             }}
           />
-          {/* Dark overlay for readability */}
+          {!imageLoaded && (
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: '#232d3e',
+              zIndex: 1,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              <div className="animate-pulse" style={{ width: '40px', height: '40px', border: '4px solid #3ed6c1', borderTopColor: 'transparent', borderRadius: '50%' }} />
+            </div>
+          )}
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 1 }} />
         </>
       )}
@@ -92,7 +151,7 @@ function NewsCard({ item }: { item: NewsItem }) {
           position: 'relative',
           zIndex: 2,
           color: '#fff',
-          padding: hasImage ? '24px 18px 18px 18px' : '24px 0',
+          padding: '24px 18px 18px 18px',
           textShadow: '0 2px 8px #000',
           width: '100%',
           textAlign: 'center',
@@ -109,16 +168,25 @@ function NewsCard({ item }: { item: NewsItem }) {
         <div style={{ color: '#ffd700', fontSize: '1em', marginBottom: '6px' }}>
           {item.source || <span style={{ color: 'red' }}>No Source</span>}
         </div>
+        {item.published_at && (
+          <div style={{ color: '#ccc', fontSize: '0.8em', marginBottom: '8px' }}>
+            {formatDate(item.published_at)}
+          </div>
+        )}
         <div style={{ color: '#eee', fontSize: '0.85em', marginTop: '8px' }}>
           {item.url ? <span style={{ color: '#fff', textDecoration: 'underline' }}>Read more</span> : 'No URL'}
         </div>
       </div>
       <style jsx>{`
-        .news-card-hover .news-card-img {
-          filter: blur(8px) brightness(0.65);
+        .news-card-hover {
+          transition: all 0.3s ease;
+        }
+        .news-card-hover:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 8px 32px rgba(0,0,0,0.2);
         }
         .news-card-hover:hover .news-card-img {
-          filter: brightness(0.65);
+          filter: brightness(0.65) !important;
         }
       `}</style>
     </div>
@@ -220,23 +288,163 @@ export default function Home() {
   const [now, setNow] = useState(new Date());
   const [newsError, setNewsError] = useState<string | null>(null);
   const [trendingError, setTrendingError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const categoryBarRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
+  // Enhanced cache with TTL and size limit
+  const cache = useRef<{
+    [key: string]: {
+      data: NewsItem[];
+      timestamp: number;
+      size: number;
+    };
+  }>({});
+
+  const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  const MAX_CACHE_SIZE = 50; // Maximum number of cached responses
+
+  const fetchNews = async (category: string, pageNum: number) => {
+    const cacheKey = `${category}-${pageNum}`;
+    const cachedData = cache.current[cacheKey];
+    const now = Date.now();
+    
+    // Use cached data if it's fresh
+    if (cachedData && now - cachedData.timestamp < CACHE_TTL) {
+      console.log(`[Performance] Using cached data for ${category} page ${pageNum}`);
+      return cachedData.data;
+    }
+
+    console.log(`[Performance] Fetching ${category} page ${pageNum}...`);
+    const startTime = performance.now();
+
+    try {
+      // Add timeout to prevent hanging requests
+      const response = await axios.get(
+        `${API_URL}/api/news${category !== 'all' ? `?category=${category}` : ''}&page=${pageNum}`,
+        { 
+          timeout: 5000, // 5 second timeout
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        }
+      );
+      
+      const endTime = performance.now();
+      console.log(`[Performance] API Response time: ${(endTime - startTime).toFixed(2)}ms`);
+      console.log(`[Performance] Response size: ${JSON.stringify(response.data).length} bytes`);
+      
+      // Clean up old cache entries if needed
+      const cacheEntries = Object.entries(cache.current);
+      if (cacheEntries.length >= MAX_CACHE_SIZE) {
+        const oldestEntry = cacheEntries.sort((a, b) => a[1].timestamp - b[1].timestamp)[0];
+        delete cache.current[oldestEntry[0]];
+      }
+      
+      // Cache the response
+      cache.current[cacheKey] = {
+        data: response.data,
+        timestamp: now,
+        size: JSON.stringify(response.data).length
+      };
+      
+      return response.data;
+    } catch (error) {
+      const endTime = performance.now();
+      console.error(`[Performance] API Error after ${(endTime - startTime).toFixed(2)}ms:`, error);
+      throw error;
+    }
+  };
+
+  // Add performance monitoring for initial load
   useEffect(() => {
+    const pageLoadStartTime = performance.now();
+    console.log('[Performance] Page load started');
+
     setLoading(true);
     setNewsError(null);
-    axios
-      .get(`${API_URL}/api/news${selectedCategory !== 'all' ? `?category=${selectedCategory}` : ''}`)
-      .then((res) => {
-        console.log('API NEWS RESPONSE:', res.data); // Debug log
-        setNews(res.data);
+    setPage(1);
+    setHasMore(true);
+    
+    // Load initial data with timeout
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        const timeoutTime = performance.now() - pageLoadStartTime;
+        console.error(`[Performance] Initial load timeout after ${timeoutTime.toFixed(2)}ms`);
         setLoading(false);
+        setNewsError('Request timed out. Please try again.');
+      }
+    }, 10000); // 10 second timeout for initial load
+    
+    fetchNews(selectedCategory, 1)
+      .then((data) => {
+        clearTimeout(timeoutId);
+        const totalLoadTime = performance.now() - pageLoadStartTime;
+        console.log(`[Performance] Total initial load time: ${totalLoadTime.toFixed(2)}ms`);
+        setNews(data);
+        setLoading(false);
+        setHasMore(data.length === 21);
       })
       .catch((err) => {
+        clearTimeout(timeoutId);
+        const errorTime = performance.now() - pageLoadStartTime;
+        console.error(`[Performance] Error after ${errorTime.toFixed(2)}ms:`, err);
         setNewsError(err.message || 'שגיאה בטעינת חדשות');
         setLoading(false);
       });
+      
+    return () => clearTimeout(timeoutId);
   }, [selectedCategory]);
+
+  // Infinite scroll setup
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+          loadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+
+    observerRef.current = observer;
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [hasMore, isLoadingMore]);
+
+  const loadMore = async () => {
+    if (!hasMore || isLoadingMore) return;
+
+    setIsLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const newData = await fetchNews(selectedCategory, nextPage);
+      
+      if (newData.length > 0) {
+        setNews(prev => [...prev, ...newData]);
+        setPage(nextPage);
+        setHasMore(newData.length === 21);
+      } else {
+        setHasMore(false);
+      }
+    } catch (error) {
+      console.error('Error loading more news:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     setTrendingError(null);
@@ -338,12 +546,19 @@ export default function Home() {
         {trendingError ? (
           <div className="text-center text-red-400 text-lg">שגיאה בטעינת טרנדים: {trendingError}</div>
         ) : safeTrending.length > 0 && (
-          <div>
-            <div className="flex flex-wrap justify-center gap-8">
-              {safeTrending.slice(0, 3).map((item, idx) => (
-                <NewsCard key={item.url + idx} item={item} />
-              ))}
-            </div>
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            alignItems: 'stretch',
+            gap: '16px',
+            padding: '0 8px',
+            width: '100%',
+            boxSizing: 'border-box',
+          }}>
+            {safeTrending.slice(0, 3).map((item, idx) => (
+              <NewsCard key={item.url + idx} item={item} />
+            ))}
           </div>
         )}
       </section>
@@ -363,23 +578,32 @@ export default function Home() {
         ) : safeFilteredNews.length === 0 ? (
           <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
         ) : (
-          <div style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-            alignItems: 'stretch',
-            gap: '16px',
-            padding: '0 8px',
-            width: '100%',
-            boxSizing: 'border-box',
-          }}>
-            {safeFilteredNews.slice(0, 21).flatMap((item, idx) => {
-              const elements = [];
-              if (idx > 0 && idx % 8 === 0) elements.push(<AdCard key={`ad-${idx}`} />);
-              elements.push(<NewsCard key={item.url + idx} item={item} />);
-              return elements;
-            })}
-          </div>
+          <>
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+              alignItems: 'stretch',
+              gap: '16px',
+              padding: '0 8px',
+              width: '100%',
+              boxSizing: 'border-box',
+            }}>
+              {safeFilteredNews.flatMap((item, idx) => {
+                const elements = [];
+                if (idx > 0 && idx % 8 === 0) elements.push(<AdCard key={`ad-${idx}`} />);
+                elements.push(<NewsCard key={item.url + idx} item={item} />);
+                return elements;
+              })}
+            </div>
+            {hasMore && (
+              <div ref={loadMoreRef} className="w-full flex justify-center mt-8">
+                {isLoadingMore ? (
+                  <div className="animate-pulse" style={{ width: '40px', height: '40px', border: '4px solid #3ed6c1', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                ) : null}
+              </div>
+            )}
+          </>
         )}
       </main>
       <BackToTopButton />
