@@ -325,65 +325,37 @@ const measurePerformance = (start: string, end: string) => {
 
 // Update fetchWithRetry with detailed debugging
 const fetchWithRetry = async (url: string, options: any, retryCount = 0): Promise<NewsItem[]> => {
-  const requestId = Math.random().toString(36).substring(7);
-  markPerformance(`request-start-${requestId}`);
-  debugLog(`Starting request ${requestId} to ${url}`, {
-    retryCount,
-    timeout: options.timeout,
-    headers: options.headers
-  });
-
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-      debugLog(`Request ${requestId} aborted due to timeout after ${options.timeout}ms`);
-    }, options.timeout);
-
-    const response = await axios.get<NewsItem[]>(url, {
-      ...options,
-      signal: controller.signal,
-      timeout: options.timeout,
-      headers: {
-        ...options.headers,
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-        'X-Request-ID': requestId
-      }
-    });
-
-    clearTimeout(timeoutId);
-    markPerformance(`request-end-${requestId}`);
-    const duration = measurePerformance(`request-start-${requestId}`, `request-end-${requestId}`);
+    debugLog(`Fetching ${url}, attempt ${retryCount + 1}`);
+    markPerformance(`fetch-start-${retryCount}`);
     
-    debugLog(`Request ${requestId} successful`, {
-      duration: `${duration.toFixed(2)}ms`,
-      status: response.status,
-      dataSize: JSON.stringify(response.data).length
+    const response = await axios.get(url, {
+      ...options,
+      timeout: 15000, // 15 second timeout
     });
-
-    return response.data;
+    
+    markPerformance(`fetch-end-${retryCount}`);
+    measurePerformance(`fetch-start-${retryCount}`, `fetch-end-${retryCount}`);
+    
+    if (response.status === 200 && response.data) {
+      // Handle both array and object responses
+      const newsItems = Array.isArray(response.data) ? response.data : 
+                       (response.data.data ? response.data.data : []);
+      
+      debugLog(`Fetched ${newsItems.length} items`);
+      return newsItems;
+    }
+    
+    throw new Error('Invalid response format');
   } catch (error: any) {
-    markPerformance(`request-error-${requestId}`);
-    const duration = measurePerformance(`request-start-${requestId}`, `request-error-${requestId}`);
-
-    debugLog(`Request ${requestId} failed`, {
-      duration: `${duration.toFixed(2)}ms`,
-      error: {
-        code: error.code,
-        message: error.message,
-        status: error.response?.status,
-        isTimeout: error.code === 'ECONNABORTED'
-      }
-    });
-
-    if (retryCount < MAX_RETRIES) {
-      const delay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, retryCount), MAX_RETRY_DELAY);
-      debugLog(`Request ${requestId} scheduling retry ${retryCount + 1}/${MAX_RETRIES} after ${delay}ms`);
+    debugLog(`Fetch error: ${error?.message || 'Unknown error'}`);
+    
+    if (retryCount < 2) {
+      const delay = Math.pow(2, retryCount) * 1000;
       await sleep(delay);
       return fetchWithRetry(url, options, retryCount + 1);
     }
-
+    
     throw error;
   }
 };
