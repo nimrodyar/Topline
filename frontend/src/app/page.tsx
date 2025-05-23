@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import axios from 'axios';
-import Head from 'next/head';
 
 interface NewsItem {
   title: string;
@@ -712,7 +711,6 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-bg text-text">
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-4xl font-bold mb-8 text-center">10Ten News IL</h1>
         {/* Global smooth scroll */}
         <style jsx global>{`
           html { scroll-behavior: smooth; }
