@@ -63,14 +63,51 @@ VALID_CATEGORIES = {
     'sports', 'entertainment', 'world', 'israel'
 }
 
-# RSS Feed URLs
+# RSS Feed URLs with updated endpoints
 RSS_FEEDS = {
-    'ynet': 'http://www.ynet.co.il/Integration/StoryRss2.xml',
-    'mako': 'https://www.mako.co.il/RSS/RSSNewsFlash.xml',
-    'walla': 'https://rss.walla.co.il/feed/1',
-    'n12': 'https://www.n12.co.il/rss/news',
-    'haaretz': 'https://www.haaretz.co.il/srv/rss',
+    'ynet': {
+        'main': 'https://www.ynet.co.il/Integration/StoryRss2.xml',
+        'trending': 'https://www.ynet.co.il/Integration/StoryRss1854.xml'
+    },
+    'mako': {
+        'main': 'https://www.mako.co.il/RSS/RSSNewsFlash.xml',
+        'trending': 'https://rcs.mako.co.il/rssPopular.xml'
+    },
+    'walla': {
+        'main': 'https://rss.walla.co.il/feed/1',
+        'trending': 'https://rss.walla.co.il/feed/22'
+    },
+    'n12': {
+        'main': 'https://www.n12.co.il/rss/news',
+        'trending': 'https://www.mako.co.il/rss/most-popular.xml'
+    },
+    'haaretz': {
+        'main': 'https://www.haaretz.co.il/srv/rss',
+        'trending': None
+    }
 }
+
+# Add retry configuration
+MAX_RETRIES = 3
+RETRY_DELAY = 1  # seconds
+
+async def fetch_with_retry(session: aiohttp.ClientSession, url: str, timeout: int = 10) -> Optional[str]:
+    """Fetch URL content with retries"""
+    for attempt in range(MAX_RETRIES):
+        try:
+            async with session.get(url, timeout=timeout) as response:
+                if response.status == 200:
+                    return await response.text()
+                logger.warning(f"Failed to fetch {url}: Status {response.status} (attempt {attempt + 1}/{MAX_RETRIES})")
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout while fetching {url} (attempt {attempt + 1}/{MAX_RETRIES})")
+        except Exception as e:
+            logger.error(f"Error fetching {url}: {str(e)} (attempt {attempt + 1}/{MAX_RETRIES})")
+        
+        if attempt < MAX_RETRIES - 1:
+            await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+    
+    return None
 
 class NewsAPIError(Exception):
     """Custom exception for News API related errors"""
@@ -203,9 +240,9 @@ async def fetch_rss_feeds() -> List[Dict]:
     all_entries = []
     timeout = aiohttp.ClientTimeout(total=30)  # Increase total timeout to 30 seconds
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        for source, url in RSS_FEEDS.items():
+        for source, feed_info in RSS_FEEDS.items():
             try:
-                async with session.get(url, timeout=10) as response:  # Increase per-request timeout
+                async with session.get(feed_info['main'], timeout=10) as response:  # Increase per-request timeout
                     if response.status != 200:
                         logger.warning(f"Failed to fetch RSS feed {source}: Status {response.status}")
                         continue
@@ -350,7 +387,7 @@ class FeedAggregator:
                 if response.status == 200:
                     html = await response.text()
                     soup = BeautifulSoup(html, 'html.parser')
-                    feed_info = self.rss_feeds[source]
+                    feed_info = RSS_FEEDS[source]
                     content_element = soup.select_one(feed_info['content_selector'])
                     content = content_element.get_text(strip=True) if content_element else ''
                     image_element = soup.select_one(feed_info['image_selector'])
@@ -507,7 +544,7 @@ class FeedAggregator:
 
     async def fetch_rss_feeds(self) -> List[Dict[str, Any]]:
         async with aiohttp.ClientSession() as session:
-            tasks = [self.fetch_rss_feed(source, feed_info, session) for source, feed_info in self.rss_feeds.items()]
+            tasks = [self.fetch_rss_feed(source, feed_info, session) for source, feed_info in RSS_FEEDS.items()]
             results = await asyncio.gather(*tasks)
             return [item for sublist in results for item in sublist]
 

@@ -5,9 +5,17 @@ from typing import Optional, List, Dict
 import logging
 import asyncio
 from datetime import datetime
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Topline News Aggregator")
@@ -26,7 +34,7 @@ feed_aggregator = FeedAggregator()
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to Topline News Aggregator API"}
+    return {"message": "Welcome to Topline News Aggregator API", "status": "healthy"}
 
 @app.get("/api/news")
 async def get_news(category: Optional[str] = None):
@@ -37,13 +45,22 @@ async def get_news(category: Optional[str] = None):
         # Set a reasonable timeout for the entire operation
         data = await asyncio.wait_for(
             feed_aggregator.get_latest_data(),
-            timeout=10.0  # 10 second timeout
+            timeout=15.0  # Increased timeout to 15 seconds
         )
         
         news_items = data.get('news', [])
         
         if category and category != 'all':
             news_items = [item for item in news_items if item.get('category') == category]
+        
+        if not news_items:
+            logger.warning(f"No news items found for category: {category}")
+            return {
+                'status': 'success',
+                'data': [],
+                'timestamp': datetime.now().isoformat(),
+                'message': 'No news items available'
+            }
         
         return {
             'status': 'success',
@@ -60,7 +77,8 @@ async def get_news(category: Optional[str] = None):
                 'status': 'success',
                 'data': cached_data,
                 'timestamp': feed_aggregator._cache.get('last_update', datetime.now()).isoformat(),
-                'from_cache': True
+                'from_cache': True,
+                'message': 'Using cached data due to timeout'
             }
         raise HTTPException(status_code=504, detail="Request timed out")
         
@@ -73,9 +91,10 @@ async def get_news(category: Optional[str] = None):
                 'status': 'success',
                 'data': cached_data,
                 'timestamp': feed_aggregator._cache.get('last_update', datetime.now()).isoformat(),
-                'from_cache': True
+                'from_cache': True,
+                'message': 'Using cached data due to error'
             }
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/news/{news_id}")
 async def get_news_detail(news_id: str):
@@ -123,8 +142,17 @@ async def get_trending_news():
         # Set a reasonable timeout for the entire operation
         trending_items = await asyncio.wait_for(
             feed_aggregator.get_trending_news(),
-            timeout=8.0  # 8 second timeout
+            timeout=10.0  # Increased timeout to 10 seconds
         )
+        
+        if not trending_items:
+            logger.warning("No trending items found")
+            return {
+                'status': 'success',
+                'data': [],
+                'timestamp': datetime.now().isoformat(),
+                'message': 'No trending items available'
+            }
         
         return {
             'status': 'success',
@@ -141,14 +169,16 @@ async def get_trending_news():
                 'status': 'success',
                 'data': cached_trending,
                 'timestamp': feed_aggregator._cache.get('trending_last_update', datetime.now()).isoformat(),
-                'from_cache': True
+                'from_cache': True,
+                'message': 'Using cached trending data due to timeout'
             }
         # Fall back to recent news
         return {
             'status': 'success',
             'data': feed_aggregator._cache.get('news', [])[:10],
             'timestamp': datetime.now().isoformat(),
-            'from_cache': True
+            'from_cache': True,
+            'message': 'Using recent news as fallback'
         }
         
     except Exception as e:
@@ -160,14 +190,16 @@ async def get_trending_news():
                 'status': 'success',
                 'data': cached_trending,
                 'timestamp': feed_aggregator._cache.get('trending_last_update', datetime.now()).isoformat(),
-                'from_cache': True
+                'from_cache': True,
+                'message': 'Using cached trending data due to error'
             }
         # Fall back to recent news
         return {
             'status': 'success',
             'data': feed_aggregator._cache.get('news', [])[:10],
             'timestamp': datetime.now().isoformat(),
-            'from_cache': True
+            'from_cache': True,
+            'message': 'Using recent news as fallback'
         }
 
 @app.get("/api/aggregate")
@@ -182,4 +214,5 @@ async def aggregate_news():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port) 
