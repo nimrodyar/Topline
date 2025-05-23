@@ -1,6 +1,11 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from feed_aggregator import FeedAggregator
+from feed_aggregator import (
+    fetch_news_api,
+    fetch_rss_feeds,
+    detect_category,
+    FeedAggregator
+)
 from typing import Optional, List, Dict
 import logging
 import asyncio
@@ -34,7 +39,8 @@ feed_aggregator = FeedAggregator()
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to Topline News Aggregator API", "status": "healthy"}
+    """Health check endpoint"""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 @app.get("/api/news")
 async def get_news(category: Optional[str] = None, page: int = 1):
@@ -134,13 +140,17 @@ async def get_trending():
         return {"error": "Failed to fetch trending news", "message": str(e)}
 
 @app.get("/api/aggregate")
-async def aggregate_news():
-    """
-    Get all news and trends
-    """
+async def get_aggregated_news():
+    """Get aggregated news from all sources"""
     try:
-        return await feed_aggregator.get_latest_data()
+        data = await feed_aggregator.get_latest_data()
+        return {
+            'status': 'success',
+            'data': data,
+            'timestamp': datetime.now().isoformat()
+        }
     except Exception as e:
+        logger.error(f"Error fetching aggregated news: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
