@@ -14,8 +14,8 @@ interface NewsItem {
   category: string;
 }
 
-// Use the public Render backend for all API calls
-const API_URL = 'https://topline-l89o.onrender.com';
+// Use the environment variable for API URL
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const CATEGORIES = [
   { key: 'all', label: 'הכל' },
@@ -710,103 +710,103 @@ export default function Home() {
   const safeTrending = Array.isArray(trending) ? trending.filter(item => item && item.title && item.url) : [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-bg via-[#202a3a] to-[#232d3e] text-text font-main flex flex-col items-center justify-start px-2 sm:px-0" dir="rtl">
-      <Head>
-        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2254073111476495" crossOrigin="anonymous"></script>
-      </Head>
-      {/* Global smooth scroll */}
-      <style jsx global>{`
-        html { scroll-behavior: smooth; }
-        @keyframes shimmer {
-          0% { background-position: -200% 0; }
-          100% { background-position: 200% 0; }
-        }
-      `}</style>
-      {/* Header */}
-      <header className="w-full max-w-2xl mx-auto sticky top-0 z-50 bg-bg/80 backdrop-blur border-b border-accent py-3 px-2 flex flex-col items-center shadow-lg rounded-b-2xl">
-        <img src="/logo.png" alt="Topline Logo" className="h-20 w-auto mb-1 drop-shadow-lg" />
-        {/* Sticky Category Bar */}
-        <nav ref={categoryBarRef} className="w-full flex flex-wrap justify-center gap-1 mt-2 sticky top-0 z-40 bg-bg/80 backdrop-blur border-b border-accent py-2">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.key}
-              onClick={() => setSelectedCategory(cat.key)}
-              className={`px-3 py-1 rounded-full text-base font-semibold transition-colors duration-150 shadow border border-accent hover:bg-accent/20 focus:outline-none focus:ring-2 focus:ring-accent ${selectedCategory === cat.key ? categoryColors[cat.key] : 'bg-bg/70 text-accent'}`}
-              aria-current={selectedCategory === cat.key ? 'page' : undefined}
-              style={{ outline: selectedCategory === cat.key ? '2px solid #3ED6C1' : 'none', cursor: 'pointer' }}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </nav>
-      </header>
+    <main className="min-h-screen bg-bg text-text">
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-4xl font-bold mb-8 text-center">10Ten News IL</h1>
+        {/* Global smooth scroll */}
+        <style jsx global>{`
+          html { scroll-behavior: smooth; }
+          @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+          }
+        `}</style>
+        {/* Header */}
+        <header className="w-full max-w-2xl mx-auto sticky top-0 z-50 bg-bg/80 backdrop-blur border-b border-accent py-3 px-2 flex flex-col items-center shadow-lg rounded-b-2xl">
+          <img src="/logo.png" alt="Topline Logo" className="h-20 w-auto mb-1 drop-shadow-lg" />
+          {/* Sticky Category Bar */}
+          <nav ref={categoryBarRef} className="w-full flex flex-wrap justify-center gap-1 mt-2 sticky top-0 z-40 bg-bg/80 backdrop-blur border-b border-accent py-2">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat.key}
+                onClick={() => setSelectedCategory(cat.key)}
+                className={`px-3 py-1 rounded-full text-base font-semibold transition-colors duration-150 shadow border border-accent hover:bg-accent/20 focus:outline-none focus:ring-2 focus:ring-accent ${selectedCategory === cat.key ? categoryColors[cat.key] : 'bg-bg/70 text-accent'}`}
+                aria-current={selectedCategory === cat.key ? 'page' : undefined}
+                style={{ outline: selectedCategory === cat.key ? '2px solid #3ED6C1' : 'none', cursor: 'pointer' }}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </nav>
+        </header>
 
-      {/* Google AdSense slot - left */}
-      <aside className="hidden lg:block fixed left-2 top-32 z-40">
-        {/* Google AdSense code here. Replace 'ca-pub-XXXX' with your publisher ID. */}
-        {/* <ins className="adsbygoogle"
-          style={{ display: 'block', width: 160, height: 600 }}
-          data-ad-client="ca-pub-XXXX"
-          data-ad-slot="1234567890"></ins> */}
-      </aside>
-      {/* Google AdSense slot - right */}
-      <aside className="hidden lg:block fixed right-2 top-32 z-40">
-        {/* Google AdSense code here. Replace 'ca-pub-XXXX' with your publisher ID. */}
-        {/* <ins className="adsbygoogle"
-          style={{ display: 'block', width: 160, height: 600 }}
-          data-ad-client="ca-pub-XXXX"
-          data-ad-slot="1234567890"></ins> */}
-      </aside>
+        {/* Google AdSense slot - left */}
+        <aside className="hidden lg:block fixed left-2 top-32 z-40">
+          {/* Google AdSense code here. Replace 'ca-pub-XXXX' with your publisher ID. */}
+          {/* <ins className="adsbygoogle"
+            style={{ display: 'block', width: 160, height: 600 }}
+            data-ad-client="ca-pub-XXXX"
+            data-ad-slot="1234567890"></ins> */}
+        </aside>
+        {/* Google AdSense slot - right */}
+        <aside className="hidden lg:block fixed right-2 top-32 z-40">
+          {/* Google AdSense code here. Replace 'ca-pub-XXXX' with your publisher ID. */}
+          {/* <ins className="adsbygoogle"
+            style={{ display: 'block', width: 160, height: 600 }}
+            data-ad-client="ca-pub-XXXX"
+            data-ad-slot="1234567890"></ins> */}
+        </aside>
 
-      {/* Main Content */}
-      <div className="w-full max-w-7xl mx-auto px-4">
-        {/* Trending Section */}
-        <section className="w-full mb-8">
-          {trendingError ? (
-            <div className="text-center text-red-400 text-lg">שגיאה בטעינת טרנדים: {trendingError}</div>
-          ) : safeTrending.length > 0 && (
-            <div className="flex flex-wrap justify-center gap-4">
-              {safeTrending.slice(0, 3).map((item, idx) => (
-                <NewsCard key={item.url + idx} item={item} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* News Feed */}
-        <main className="flex-1 w-full pb-8">
-          {newsError ? (
-            <div className="text-center text-red-400 text-lg mt-16">שגיאה בטעינת חדשות: {newsError}</div>
-          ) : loading ? (
-            <LoadingSkeleton />
-          ) : safeFilteredNews.length === 0 ? (
-            <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
-          ) : (
-            <>
+        {/* Main Content */}
+        <div className="w-full max-w-7xl mx-auto px-4">
+          {/* Trending Section */}
+          <section className="w-full mb-8">
+            {trendingError ? (
+              <div className="text-center text-red-400 text-lg">שגיאה בטעינת טרנדים: {trendingError}</div>
+            ) : safeTrending.length > 0 && (
               <div className="flex flex-wrap justify-center gap-4">
-                {safeFilteredNews.flatMap((item, idx) => {
-                  const elements = [];
-                  if (idx > 0 && idx % 8 === 0) elements.push(<AdCard key={`ad-${idx}`} />);
-                  elements.push(<NewsCard key={item.url + idx} item={item} />);
-                  return elements;
-                })}
+                {safeTrending.slice(0, 3).map((item, idx) => (
+                  <NewsCard key={item.url + idx} item={item} />
+                ))}
               </div>
-              {hasMore && (
-                <div ref={loadMoreRef} className="w-full flex justify-center mt-8">
-                  {isLoadingMore ? (
-                    <div className="animate-pulse" style={{ width: '40px', height: '40px', border: '4px solid #3ed6c1', borderTopColor: 'transparent', borderRadius: '50%' }} />
-                  ) : null}
+            )}
+          </section>
+
+          {/* News Feed */}
+          <main className="flex-1 w-full pb-8">
+            {newsError ? (
+              <div className="text-center text-red-400 text-lg mt-16">שגיאה בטעינת חדשות: {newsError}</div>
+            ) : loading ? (
+              <LoadingSkeleton />
+            ) : safeFilteredNews.length === 0 ? (
+              <div className="text-center text-accent text-2xl mt-16">אין חדשות זמינות כרגע.</div>
+            ) : (
+              <>
+                <div className="flex flex-wrap justify-center gap-4">
+                  {safeFilteredNews.flatMap((item, idx) => {
+                    const elements = [];
+                    if (idx > 0 && idx % 8 === 0) elements.push(<AdCard key={`ad-${idx}`} />);
+                    elements.push(<NewsCard key={item.url + idx} item={item} />);
+                    return elements;
+                  })}
                 </div>
-              )}
-            </>
-          )}
-        </main>
+                {hasMore && (
+                  <div ref={loadMoreRef} className="w-full flex justify-center mt-8">
+                    {isLoadingMore ? (
+                      <div className="animate-pulse" style={{ width: '40px', height: '40px', border: '4px solid #3ed6c1', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                    ) : null}
+                  </div>
+                )}
+              </>
+            )}
+          </main>
+        </div>
+
+        {/* QuickUpdates as overlay */}
+        <QuickUpdates />
+
+        <BackToTopButton />
       </div>
-
-      {/* QuickUpdates as overlay */}
-      <QuickUpdates />
-
-      <BackToTopButton />
-    </div>
+    </main>
   );
 } 
