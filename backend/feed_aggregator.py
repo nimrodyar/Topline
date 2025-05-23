@@ -45,16 +45,15 @@ def translate_to_english(text: str) -> str:
 AI_IMAGE_CACHE = {}
 
 # API Configuration
-WORLD_NEWS_API_KEY = os.getenv('WORLD_NEWS_API_KEY')
-WORLD_NEWS_BASE_URL = 'https://api.worldnewsapi.com/search-news'
+NEWS_API_KEY = os.getenv('NEWS_API_KEY')
+NEWS_API_BASE_URL = 'https://newsapi.org/v2'
 
-# Default World News API parameters
-WORLD_NEWS_PARAMS = {
+# Default News API parameters
+NEWS_API_PARAMS = {
     'country': 'il',
     'language': 'he,en',
-    'sort': 'publish-time',
-    'sort-direction': 'desc',
-    'number': 20,  # Reduced from 100 to optimize performance
+    'sortBy': 'publishedAt',
+    'pageSize': 20,  # Reduced from 100 to optimize performance
 }
 
 # Valid categories for filtering
@@ -189,104 +188,161 @@ def get_time_window_params() -> Dict:
 async def fetch_world_news(category: Optional[str] = None) -> List[Dict]:
     """Fetch news from World News API with optional category filtering"""
     try:
-        if not WORLD_NEWS_API_KEY:
+        if not NEWS_API_KEY:
             logger.warning("World News API key not configured, skipping API fetch")
             return []
             
         # Build request parameters
-        params = WORLD_NEWS_PARAMS.copy()
-        params.update(get_time_window_params())
-        params['api-key'] = WORLD_NEWS_API_KEY
-        
-        # Add category filter if provided and valid
+        params = NEWS_API_PARAMS.copy()
         if category:
-            category = category.lower()
-            if category not in VALID_CATEGORIES:
-                logger.warning(f"Invalid category provided: {category}")
-                return []
             params['category'] = category
             
-        timeout = aiohttp.ClientTimeout(total=30)  # Increase timeout to 30 seconds
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(
-                WORLD_NEWS_BASE_URL,
-                params=params,
-                timeout=20  # Increase per-request timeout
-            ) as response:
-                if response.status == 429:
-                    logger.error("World News API rate limit exceeded")
+        headers = {
+            'X-Api-Key': NEWS_API_KEY
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{NEWS_API_BASE_URL}/top-headlines", params=params, headers=headers) as response:
+                if response.status != 200:
+                    logger.error(f"News API request failed with status {response.status}")
                     return []
                     
-                response.raise_for_status()
                 data = await response.json()
+                if not data.get('articles'):
+                    logger.warning("No articles found in News API response")
+                    return []
+                    
+                return [{
+                    'title': article.get('title', ''),
+                    'source': article.get('source', {}).get('name', ''),
+                    'url': article.get('url', ''),
+                    'published_at': article.get('publishedAt', ''),
+                    'summary': article.get('description', ''),
+                    'image_url': article.get('urlToImage', ''),
+                    'category': category or 'general'
+                } for article in data['articles']]
                 
-                news_items = [
-                    format_world_news_item(item)
-                    for item in data.get('news', [])
-                ]
-                
-                logger.info(f"Fetched {len(news_items)} items from World News API")
-                return news_items
-                
-    except asyncio.TimeoutError:
-        logger.warning("Timeout while fetching from World News API")
-        return []
     except Exception as e:
-        logger.error(f"Error fetching from World News API: {str(e)}")
+        logger.error(f"Error fetching from News API: {str(e)}")
         return []
 
 async def fetch_rss_feeds() -> List[Dict]:
     """Fetch news from RSS feeds"""
     all_entries = []
     timeout = aiohttp.ClientTimeout(total=30)  # Increase total timeout to 30 seconds
+    
     async with aiohttp.ClientSession(timeout=timeout) as session:
+        tasks = []
         for source, feed_info in RSS_FEEDS.items():
-            try:
-                async with session.get(feed_info['main'], timeout=10) as response:  # Increase per-request timeout
-                    if response.status != 200:
-                        logger.warning(f"Failed to fetch RSS feed {source}: Status {response.status}")
-                        continue
-                        
-                    feed_content = await response.text()
-                    feed = feedparser.parse(feed_content)
-                    
-                    for entry in feed.entries[:10]:  # Reduce entries per source to improve speed
-                        try:
-                            # Extract image if not present in feed
-                            image_url = None
-                            if hasattr(entry, 'media_content'):
-                                image_url = entry.media_content[0]['url']
-                            elif hasattr(entry, 'media_thumbnail'):
-                                image_url = entry.media_thumbnail[0]['url']
-                            else:
-                                # Skip image extraction if not readily available
-                                image_url = None
-                            
-                            published_at = datetime(*entry.published_parsed[:6]) if hasattr(entry, 'published_parsed') else datetime.now()
-                            
-                            news_item = {
-                                'title': entry.title,
-                                'url': entry.link,
-                                'published_at': published_at.isoformat(),
-                                'source': source,
-                                'summary': entry.get('summary', ''),
-                                'image_url': image_url,
-                                'category': entry.get('tags', []),
-                            }
-                            all_entries.append(news_item)
-                            
-                        except Exception as e:
-                            logger.error(f"Error processing entry from {source}: {str(e)}")
-                            continue
-                            
-            except asyncio.TimeoutError:
-                logger.warning(f"Timeout while fetching RSS feed {source}")
-                continue
-            except Exception as e:
-                logger.error(f"Error fetching RSS feed {source}: {str(e)}")
+            if not feed_info or not feed_info.get('main'):
+                logger.warning(f"Skipping {source} - no valid feed URL")
                 continue
                 
+            tasks.append(fetch_rss_feed(source, feed_info, session))
+            
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for source, result in zip(RSS_FEEDS.keys(), results):
+            if isinstance(result, Exception):
+                logger.error(f"Error fetching {source}: {str(result)}")
+                continue
+                
+            if not result:
+                logger.warning(f"No entries found for {source}")
+                continue
+                
+            all_entries.extend(result)
+            
     return all_entries
+
+async def fetch_rss_feed(source: str, feed_info: Dict[str, Any], session) -> List[Dict[str, Any]]:
+    """Fetch and parse a single RSS feed"""
+    try:
+        feed_url = feed_info['main']
+        logger.info(f"Fetching RSS feed from {source}: {feed_url}")
+        
+        async with session.get(feed_url, timeout=10) as response:
+            if response.status != 200:
+                logger.warning(f"Failed to fetch {source}: Status {response.status}")
+                return []
+                
+            content = await response.text()
+            if not content:
+                logger.warning(f"Empty response from {source}")
+                return []
+                
+            feed = feedparser.parse(content)
+            if not feed.entries:
+                logger.warning(f"No entries found in feed for {source}")
+                return []
+                
+            items = []
+            for entry in feed.entries[:10]:  # Limit to 10 entries per source
+                try:
+                    title = entry.get('title', '')
+                    link = entry.get('link', '')
+                    published = entry.get('published', '')
+                    summary = entry.get('summary', '')
+                    
+                    # Extract image
+                    image_url = None
+                    if hasattr(entry, 'media_content'):
+                        image_url = entry.media_content[0]['url']
+                    elif hasattr(entry, 'media_thumbnail'):
+                        image_url = entry.media_thumbnail[0]['url']
+                    elif hasattr(entry, 'links'):
+                        for link in entry.links:
+                            if link.get('type', '').startswith('image/'):
+                                image_url = link.get('href')
+                                break
+                    
+                    item = {
+                        'title': title,
+                        'url': link,
+                        'published_at': published,
+                        'summary': summary,
+                        'source': source,
+                        'image_url': image_url,
+                        'category': detect_category(title, summary)
+                    }
+                    
+                    items.append(item)
+                except Exception as e:
+                    logger.error(f"Error processing entry from {source}: {str(e)}")
+                    continue
+                    
+            return items
+            
+    except asyncio.TimeoutError:
+        logger.error(f"Timeout while fetching {source}")
+        return []
+    except Exception as e:
+        logger.error(f"Error fetching RSS feed {source}: {str(e)}")
+        return []
+
+def detect_category(title: str, content: str) -> str:
+    """Detect the category of a news item based on its title and content"""
+    text = (title + ' ' + content).lower()
+    
+    # Define category keywords
+    categories = {
+        'politics': ['פוליטי', 'פוליטיקה', 'כנסת', 'ממשלה', 'בנט', 'לפיד', 'נתניהו', 'חוק', 'חוקים'],
+        'business': ['כלכלי', 'כלכלה', 'בורסה', 'שוק', 'מניות', 'עסקים', 'חברה', 'חברות'],
+        'technology': ['טכנולוגיה', 'הייטק', 'סטארט-אפ', 'חדשנות', 'דיגיטלי', 'מחשבים', 'תוכנה'],
+        'sports': ['ספורט', 'כדורגל', 'כדורסל', 'שחקן', 'קבוצה', 'משחק', 'תחרות'],
+        'entertainment': ['בידור', 'תרבות', 'סרט', 'סדרה', 'שחקן', 'שחקנית', 'מוזיקה'],
+        'health': ['בריאות', 'רפואה', 'מחלה', 'טיפול', 'חולה', 'רופא', 'בית חולים'],
+        'science': ['מדע', 'מחקר', 'חלל', 'מדענים', 'תגלית', 'ניסוי']
+    }
+    
+    # Count keyword matches for each category
+    scores = {cat: sum(1 for kw in keywords if kw in text) for cat, keywords in categories.items()}
+    
+    # Return the category with the highest score, or 'general' if no matches
+    max_score = max(scores.values())
+    if max_score > 0:
+        return max(scores.items(), key=lambda x: x[1])[0]
+    return 'general'
 
 async def get_news(category: Optional[str] = None) -> List[Dict]:
     """
@@ -332,8 +388,8 @@ class FeedAggregator:
         self.trends_client = TrendReq(hl='he-IL', tz=120)  # Hebrew language, Israel timezone
         
         # News API configuration
-        self.news_api_key = os.getenv("NEWS_API_KEY")
-        self.news_api_base_url = "https://newsapi.org/v2"
+        self.news_api_key = NEWS_API_KEY
+        self.news_api_base_url = NEWS_API_BASE_URL
         
         # Cache for storing fetched data with shorter expiry
         self._cache = {
@@ -415,43 +471,43 @@ class FeedAggregator:
             'author': None
         }
 
-    async def fetch_news_api(self) -> List[Dict[str, Any]]:
+    async def fetch_news_api(self, category: Optional[str] = None) -> List[Dict]:
+        """Fetch news from News API with optional category filtering"""
         try:
-            news_items = []
-            from_date = (datetime.utcnow() - timedelta(days=3)).strftime('%Y-%m-%dT%H:%M:%SZ')
-            page = 1
-            max_pages = 3  # up to 300 items
-            while page <= max_pages:
-                headlines_url = f"{self.news_api_base_url}/top-headlines"
-                params = {
-                    'apiKey': self.news_api_key,
-                    'country': 'il',
-                    'pageSize': 100,
-                    'page': page,
-                    'from': from_date
-                }
-                response = requests.get(headlines_url, params=params)
-                response.raise_for_status()
-                data = response.json()
-                articles = data.get('articles', [])
-                if not articles:
-                    break
-                for article in articles:
-                    news_item = {
-                        'title': article['title'],
-                        'content': article['description'] or article['content'],
-                        'source': article['source']['name'],
-                        'category': self._detect_category(article['title'], article['description'] or ''),
-                        'url': article['url'],
-                        'image_url': article['urlToImage'],
-                        'published_at': article['publishedAt'],
-                        'author': article['author']
-                    }
-                    news_items.append(news_item)
-                if len(articles) < 100:
-                    break
-                page += 1
-            return news_items
+            if not self.news_api_key:
+                logger.warning("News API key not configured, skipping API fetch")
+                return []
+            
+            # Build request parameters
+            params = self.NEWS_API_PARAMS.copy()
+            if category:
+                params['category'] = category
+            
+            headers = {
+                'X-Api-Key': self.news_api_key
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.news_api_base_url}/top-headlines", params=params, headers=headers) as response:
+                    if response.status != 200:
+                        logger.error(f"News API request failed with status {response.status}")
+                        return []
+                        
+                    data = await response.json()
+                    if not data.get('articles'):
+                        logger.warning("No articles found in News API response")
+                        return []
+                        
+                    return [{
+                        'title': article.get('title', ''),
+                        'source': article.get('source', {}).get('name', ''),
+                        'url': article.get('url', ''),
+                        'published_at': article.get('publishedAt', ''),
+                        'summary': article.get('description', ''),
+                        'image_url': article.get('urlToImage', ''),
+                        'category': category or 'general'
+                    } for article in data['articles']]
+                    
         except Exception as e:
             logger.error(f"Error fetching from News API: {str(e)}")
             return []
@@ -500,53 +556,6 @@ class FeedAggregator:
                 return category
         
         return 'general'
-
-    async def fetch_rss_feed(self, source: str, feed_info: Dict[str, Any], session) -> List[Dict[str, Any]]:
-        news_items = []
-        try:
-            feed = feedparser.parse(feed_info['url'])
-            entries = feed.entries[:30]
-            three_days_ago = datetime.utcnow() - timedelta(days=3)
-            for idx, entry in enumerate(entries):
-                published = getattr(entry, 'published_parsed', None)
-                if published:
-                    published_dt = datetime(*published[:6])
-                    if published_dt < three_days_ago:
-                        continue
-                image_url = None
-                # First, try to fetch image from article page
-                try:
-                    full_content = await asyncio.wait_for(self.fetch_full_content(entry.link, source, session), timeout=2)
-                    if full_content.get('image_url'):
-                        image_url = full_content.get('image_url')
-                except Exception:
-                    pass
-                # If not found, use image from RSS entry
-                if not image_url:
-                    entry_image_url = self._extract_image_from_entry(entry)
-                    image_url = entry_image_url
-                content = getattr(entry, 'summary', '') or getattr(entry, 'description', '') or ''
-                display_source = self.source_display_names.get(source, source)
-                news_item = {
-                    'title': getattr(entry, 'title', ''),
-                    'content': content,
-                    'source': display_source,
-                    'category': self._detect_category(getattr(entry, 'title', ''), content),
-                    'url': getattr(entry, 'link', ''),
-                    'image_url': image_url,
-                    'published_at': getattr(entry, 'published', None),
-                    'author': None
-                }
-                news_items.append(news_item)
-        except Exception as e:
-            logger.error(f"Error fetching RSS feed {source}: {str(e)}")
-        return news_items
-
-    async def fetch_rss_feeds(self) -> List[Dict[str, Any]]:
-        async with aiohttp.ClientSession() as session:
-            tasks = [self.fetch_rss_feed(source, feed_info, session) for source, feed_info in RSS_FEEDS.items()]
-            results = await asyncio.gather(*tasks)
-            return [item for sublist in results for item in sublist]
 
     async def fetch_google_trends(self) -> List[Dict[str, Any]]:
         """

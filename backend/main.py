@@ -37,64 +37,38 @@ async def root():
     return {"message": "Welcome to Topline News Aggregator API", "status": "healthy"}
 
 @app.get("/api/news")
-async def get_news(category: Optional[str] = None):
-    """
-    Get news items with optional category filtering
-    """
+async def get_news(category: Optional[str] = None, page: int = 1):
+    """Get news items with optional category filtering"""
     try:
-        # Set a reasonable timeout for the entire operation
-        data = await asyncio.wait_for(
-            feed_aggregator.get_latest_data(),
-            timeout=15.0  # Increased timeout to 15 seconds
-        )
+        # Try to get news from News API first
+        news_items = await fetch_news_api(category)
         
-        news_items = data.get('news', [])
-        
-        if category and category != 'all':
-            news_items = [item for item in news_items if item.get('category') == category]
-        
+        # If News API fails or returns no items, fall back to RSS feeds
         if not news_items:
+            logger.warning("No news items from News API, falling back to RSS feeds")
+            news_items = await fetch_rss_feeds()
+            
+            # Filter by category if specified
+            if category and category != 'all':
+                news_items = [item for item in news_items if item.get('category') == category]
+        
+        # Sort by published date
+        news_items.sort(key=lambda x: x.get('published_at', ''), reverse=True)
+        
+        # Paginate results
+        start_idx = (page - 1) * 20
+        end_idx = start_idx + 20
+        paginated_items = news_items[start_idx:end_idx]
+        
+        if not paginated_items:
             logger.warning(f"No news items found for category: {category}")
-            return {
-                'status': 'success',
-                'data': [],
-                'timestamp': datetime.now().isoformat(),
-                'message': 'No news items available'
-            }
-        
-        return {
-            'status': 'success',
-            'data': news_items,
-            'timestamp': datetime.now().isoformat()
-        }
-        
-    except asyncio.TimeoutError:
-        logger.error("Timeout while fetching news")
-        # Return cached data if available
-        cached_data = feed_aggregator._cache.get('news', [])
-        if cached_data:
-            return {
-                'status': 'success',
-                'data': cached_data,
-                'timestamp': feed_aggregator._cache.get('last_update', datetime.now()).isoformat(),
-                'from_cache': True,
-                'message': 'Using cached data due to timeout'
-            }
-        raise HTTPException(status_code=504, detail="Request timed out")
+            return {"data": [], "message": "No news items found"}
+            
+        return {"data": paginated_items}
         
     except Exception as e:
         logger.error(f"Error fetching news: {str(e)}")
-        # Return cached data if available
-        cached_data = feed_aggregator._cache.get('news', [])
-        if cached_data:
-            return {
-                'status': 'success',
-                'data': cached_data,
-                'timestamp': feed_aggregator._cache.get('last_update', datetime.now()).isoformat(),
-                'from_cache': True,
-                'message': 'Using cached data due to error'
-            }
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"error": "Failed to fetch news", "message": str(e)}
 
 @app.get("/api/news/{news_id}")
 async def get_news_detail(news_id: str):
@@ -134,73 +108,30 @@ async def get_categories():
     }
 
 @app.get("/api/trending")
-async def get_trending_news():
-    """
-    Get trending news items
-    """
+async def get_trending():
+    """Get trending news items"""
     try:
-        # Set a reasonable timeout for the entire operation
-        trending_items = await asyncio.wait_for(
-            feed_aggregator.get_trending_news(),
-            timeout=10.0  # Increased timeout to 10 seconds
-        )
+        # Try to get trending news from News API first
+        trending_items = await fetch_news_api()
+        
+        # If News API fails or returns no items, fall back to RSS feeds
+        if not trending_items:
+            logger.warning("No trending items from News API, falling back to RSS feeds")
+            trending_items = await fetch_rss_feeds()
+            
+        # Sort by published date and take top 5
+        trending_items.sort(key=lambda x: x.get('published_at', ''), reverse=True)
+        trending_items = trending_items[:5]
         
         if not trending_items:
             logger.warning("No trending items found")
-            return {
-                'status': 'success',
-                'data': [],
-                'timestamp': datetime.now().isoformat(),
-                'message': 'No trending items available'
-            }
-        
-        return {
-            'status': 'success',
-            'data': trending_items,
-            'timestamp': datetime.now().isoformat()
-        }
-        
-    except asyncio.TimeoutError:
-        logger.error("Timeout while fetching trending news")
-        # Return cached trending data if available
-        cached_trending = feed_aggregator._cache.get('trending_news', [])
-        if cached_trending:
-            return {
-                'status': 'success',
-                'data': cached_trending,
-                'timestamp': feed_aggregator._cache.get('trending_last_update', datetime.now()).isoformat(),
-                'from_cache': True,
-                'message': 'Using cached trending data due to timeout'
-            }
-        # Fall back to recent news
-        return {
-            'status': 'success',
-            'data': feed_aggregator._cache.get('news', [])[:10],
-            'timestamp': datetime.now().isoformat(),
-            'from_cache': True,
-            'message': 'Using recent news as fallback'
-        }
+            return {"data": [], "message": "No trending items found"}
+            
+        return {"data": trending_items}
         
     except Exception as e:
         logger.error(f"Error fetching trending news: {str(e)}")
-        # Return cached trending data if available
-        cached_trending = feed_aggregator._cache.get('trending_news', [])
-        if cached_trending:
-            return {
-                'status': 'success',
-                'data': cached_trending,
-                'timestamp': feed_aggregator._cache.get('trending_last_update', datetime.now()).isoformat(),
-                'from_cache': True,
-                'message': 'Using cached trending data due to error'
-            }
-        # Fall back to recent news
-        return {
-            'status': 'success',
-            'data': feed_aggregator._cache.get('news', [])[:10],
-            'timestamp': datetime.now().isoformat(),
-            'from_cache': True,
-            'message': 'Using recent news as fallback'
-        }
+        return {"error": "Failed to fetch trending news", "message": str(e)}
 
 @app.get("/api/aggregate")
 async def aggregate_news():
