@@ -1,8 +1,63 @@
 import os
 from dotenv import load_dotenv
+from pydantic import BaseSettings, validator
+from typing import Optional
 
 # Load environment variables
 load_dotenv()
+
+class Settings(BaseSettings):
+    # API Keys
+    NEWS_API_KEY: str
+    CLOUDFLARE_API_KEY: str
+    CLOUDFLARE_ACCOUNT_ID: str
+    
+    # Redis Configuration
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_PASSWORD: Optional[str] = None
+    
+    # API Configuration
+    API_HOST: str = "0.0.0.0"
+    API_PORT: int = 8000
+    DEBUG: bool = False
+    
+    # CORS Configuration
+    ALLOWED_ORIGINS: list = [
+        "https://topline.vercel.app",
+        "http://localhost:3000"
+    ]
+    
+    # Rate Limiting
+    RATE_LIMIT_PER_MINUTE: int = 60
+    
+    @validator("NEWS_API_KEY", "CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID")
+    def validate_required_keys(cls, v, field):
+        if not v:
+            raise ValueError(f"{field.name} is required")
+        return v
+    
+    @validator("REDIS_HOST")
+    def validate_redis_host(cls, v):
+        if not v:
+            raise ValueError("REDIS_HOST is required")
+        return v
+    
+    @validator("ALLOWED_ORIGINS")
+    def validate_origins(cls, v):
+        if not v:
+            raise ValueError("At least one allowed origin is required")
+        return v
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+
+# Create settings instance
+settings = Settings()
+
+# Export settings
+__all__ = ["settings"]
 
 # API Keys
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')

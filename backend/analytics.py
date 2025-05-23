@@ -3,9 +3,133 @@ from sqlalchemy import func, desc
 from datetime import datetime, timedelta
 import models
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Callable
+from logging.handlers import RotatingFileHandler
+import time
+from functools import wraps
+from prometheus_client import Counter, Histogram, start_http_server
+import os
 
-logger = logging.getLogger(__name__)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Create logs directory if it doesn't exist
+os.makedirs('logs', exist_ok=True)
+
+# Set up file handler
+file_handler = RotatingFileHandler(
+    'logs/app.log',
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5
+)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+))
+
+# Set up logger
+logger = logging.getLogger('topline')
+logger.addHandler(file_handler)
+
+# Prometheus metrics
+REQUEST_COUNT = Counter(
+    'http_requests_total',
+    'Total HTTP requests',
+    ['method', 'endpoint', 'status']
+)
+
+REQUEST_LATENCY = Histogram(
+    'http_request_duration_seconds',
+    'HTTP request latency',
+    ['method', 'endpoint']
+)
+
+API_ERROR_COUNT = Counter(
+    'api_errors_total',
+    'Total API errors',
+    ['source', 'error_type']
+)
+
+CACHE_HITS = Counter(
+    'cache_hits_total',
+    'Total cache hits',
+    ['cache_type']
+)
+
+CACHE_MISSES = Counter(
+    'cache_misses_total',
+    'Total cache misses',
+    ['cache_type']
+)
+
+def monitor_request(func: Callable) -> Callable:
+    """Decorator to monitor request metrics"""
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        start_time = time.time()
+        try:
+            response = await func(*args, **kwargs)
+            status = 'success'
+            return response
+        except Exception as e:
+            status = 'error'
+            API_ERROR_COUNT.labels(
+                source=func.__name__,
+                error_type=type(e).__name__
+            ).inc()
+            raise
+        finally:
+            duration = time.time() - start_time
+            REQUEST_COUNT.labels(
+                method='GET',
+                endpoint=func.__name__,
+                status=status
+            ).inc()
+            REQUEST_LATENCY.labels(
+                method='GET',
+                endpoint=func.__name__
+            ).observe(duration)
+    return wrapper
+
+def monitor_cache(func: Callable) -> Callable:
+    """Decorator to monitor cache metrics"""
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        try:
+            result = await func(*args, **kwargs)
+            if result is None:
+                CACHE_MISSES.labels(cache_type=func.__name__).inc()
+            else:
+                CACHE_HITS.labels(cache_type=func.__name__).inc()
+            return result
+        except Exception as e:
+            logger.error(f"Cache error in {func.__name__}: {str(e)}")
+            raise
+    return wrapper
+
+def start_monitoring(port: int = 8000):
+    """Start Prometheus metrics server"""
+    start_http_server(port)
+    logger.info(f"Started metrics server on port {port}")
+
+def log_error(error: Exception, context: dict = None):
+    """Log error with context"""
+    logger.error(
+        f"Error: {str(error)}",
+        extra={
+            'error_type': type(error).__name__,
+            'context': context or {}
+        }
+    )
+
+def log_info(message: str, data: dict = None):
+    """Log info message with data"""
+    logger.info(
+        message,
+        extra={'data': data or {}}
+    )
 
 class EngagementAnalyzer:
     def __init__(self, db: Session):

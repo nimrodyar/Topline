@@ -10,6 +10,12 @@ from bs4 import BeautifulSoup
 import aiohttp
 import asyncio
 from urllib.parse import urlparse
+import redis
+from PIL import Image
+import io
+import hashlib
+import json
+import time
 
 load_dotenv()
 
@@ -89,6 +95,16 @@ RSS_FEEDS = {
 # Add retry configuration
 MAX_RETRIES = 3
 RETRY_DELAY = 1  # seconds
+
+# Initialize Redis client
+redis_client = redis.Redis(
+    host=os.getenv('REDIS_HOST', 'localhost'),
+    port=int(os.getenv('REDIS_PORT', 6379)),
+    password=os.getenv('REDIS_PASSWORD'),
+    decode_responses=True
+)
+
+CACHE_TTL = 300  # 5 minutes
 
 async def fetch_with_retry(session: aiohttp.ClientSession, url: str, timeout: int = 10) -> Optional[str]:
     """Fetch URL content with retries"""
@@ -381,6 +397,56 @@ async def get_news(category: Optional[str] = None) -> List[Dict]:
     
     logger.info(f"Total news items fetched: {len(unique_news)}")
     return unique_news
+
+async def optimize_image(image_url: str) -> Optional[str]:
+    """Optimize image size and quality"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(image_url) as response:
+                if response.status != 200:
+                    return None
+                    
+                image_data = await response.read()
+                img = Image.open(io.BytesIO(image_data))
+                
+                # Resize if too large
+                max_size = (800, 800)
+                if img.size[0] > max_size[0] or img.size[1] > max_size[1]:
+                    img.thumbnail(max_size, Image.LANCZOS)
+                
+                # Convert to JPEG and optimize
+                output = io.BytesIO()
+                img.save(output, format='JPEG', quality=85, optimize=True)
+                return output.getvalue()
+    except Exception as e:
+        logger.error(f"Error optimizing image: {e}")
+        return None
+
+def get_cache_key(category: Optional[str], page: int) -> str:
+    """Generate cache key for news items"""
+    return f"news:{category or 'all'}:{page}"
+
+async def fetch_news_with_cache(category: Optional[str] = None, page: int = 1) -> List[Dict]:
+    """Fetch news with caching"""
+    cache_key = get_cache_key(category, page)
+    
+    # Try to get from cache
+    cached_data = redis_client.get(cache_key)
+    if cached_data:
+        return json.loads(cached_data)
+    
+    # Fetch fresh data
+    news_items = await fetch_news_api(category)
+    
+    # Cache the results
+    if news_items:
+        redis_client.setex(
+            cache_key,
+            CACHE_TTL,
+            json.dumps(news_items)
+        )
+    
+    return news_items
 
 class FeedAggregator:
     def __init__(self):

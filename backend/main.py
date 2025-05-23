@@ -1,5 +1,9 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from feed_aggregator import (
     fetch_news_api,
     fetch_rss_feeds,
@@ -25,13 +29,29 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Topline News Aggregator")
 
-# Configure CORS
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Configure CORS with specific origins
+ALLOWED_ORIGINS = [
+    "https://topline.vercel.app",
+    "http://localhost:3000"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET"],
     allow_headers=["*"],
+)
+
+# Add trusted host middleware
+app.add_middleware(
+    TrustedHostMiddleware, 
+    allowed_hosts=["topline-l89o.onrender.com", "localhost"]
 )
 
 # Initialize feed aggregator
@@ -43,7 +63,8 @@ async def root():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 @app.get("/api/news")
-async def get_news(category: Optional[str] = None, page: int = 1):
+@limiter.limit("60/minute")
+async def get_news(request: Request, category: Optional[str] = None, page: int = 1):
     """Get news items with optional category filtering"""
     try:
         # Try to get news from News API first
