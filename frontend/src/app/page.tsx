@@ -84,7 +84,7 @@ export default function Home() {
         const response = await fetch(`/api/news?category=${updateCategory}`,{signal:controller.signal});
         if (!response.ok) throw new Error('העדכונים אינם זמינים כרגע');
         const result:Feed = await response.json();
-        if (!controller.signal.aborted) {setUpdates(result.data.slice(0,8));setUpdatesError('');}
+        if (!controller.signal.aborted) {setUpdates([...result.data].sort((a,b)=>(Date.parse(b.published_at || '')||0)-(Date.parse(a.published_at || '')||0)).slice(0,8));setUpdatesError('');}
       } catch {if(!controller.signal.aborted) setUpdatesError('העדכונים אינם זמינים כרגע');}
     }
     setUpdates([]);fetchUpdates();const interval=setInterval(fetchUpdates,120000);
