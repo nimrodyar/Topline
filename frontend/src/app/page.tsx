@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import ArticlePreview from '@/components/ArticlePreview';
+import FlashBar from '@/components/FlashBar';
 
 import type { Story as Article } from '@/lib/stories';
 type Source = { source: string; status: string; count: number };
@@ -15,26 +17,27 @@ function timestamp(value: string | null) {
 function NewsCard({item}:{item:Article}) {
   const [failed,setFailed] = useState(false);
   useEffect(()=>setFailed(false),[item.image_url]);
-  return <article className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#202a39] shadow-lg">
-    <a href={item.url} target="_blank" rel="noopener noreferrer" tabIndex={-1} aria-hidden="true" className="relative block aspect-video overflow-hidden bg-[#283649]">
+  return <ArticlePreview story={item}>{openReader=><article className="flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#202a39] shadow-lg">
+    <button onClick={openReader} aria-label={`קריאת הכתבה: ${item.title}`} className="relative block aspect-video w-full overflow-hidden bg-[#283649]">
       {item.image_url && !failed ? <img src={item.image_url} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={()=>setFailed(true)} className="h-full w-full object-cover" /> : <span className="absolute inset-0 flex items-center justify-center text-sm text-gray-400">תמונה לא זמינה מהדיווח האחרון</span>}
-    </a>
+    </button>
     <div className="flex flex-1 flex-col p-5 sm:p-6">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
         <span className={item.source_count>1?'rounded-full bg-accent/15 px-3 py-1.5 font-semibold text-accent':'text-gray-400'}>{item.source_count>1?`סיקור מ־${item.source_count} מקורות`:'דיווח ממקור אחד'}</span>
         <time dateTime={item.published_at || undefined} className="text-gray-400">{timestamp(item.published_at)}</time>
       </div>
-      <h2 className="text-xl font-bold leading-relaxed text-white"><a href={item.url} target="_blank" rel="noopener noreferrer" className="rounded hover:text-accent">{item.title}</a></h2>
+      <h2 className="text-xl font-bold leading-relaxed text-white"><button onClick={openReader} className="rounded text-right hover:text-accent">{item.title}</button></h2>
       <div className="mt-4 space-y-3 text-base leading-7 text-gray-200">
         {item.summary_parts?.filter(part=>part.text.replace(/[….,]/g,'')!==item.title.replace(/[….,]/g,'')).map(part=><p key={part.url}>{part.text} <a href={part.url} target="_blank" rel="noopener noreferrer" className="inline-block rounded px-1 text-sm text-accent underline decoration-accent/40 underline-offset-4" aria-label={`הדיווח של ${names[part.source]||part.source}`}>({names[part.source]||part.source})</a></p>)}
       </div>
       <div className="mt-auto pt-5">
+        <button onClick={openReader} className="mb-4 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-accent px-5 py-3 font-bold text-bg">תקציר וקריאת הכתבה</button>
         <p className="mb-1 text-xs text-gray-400">{item.source_count>1?'לכל הדיווחים במקור':'לכתבה במקור'}</p>
         <div className="flex flex-wrap gap-2">{(item.coverage || [item]).map(source=><a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-full border border-accent/30 px-4 text-sm font-semibold text-accent hover:bg-accent/10">{names[source.source]||source.source} ↗</a>)}</div>
         {item.image_source && !failed && <p className="mt-3 text-xs leading-5 text-gray-400">תמונה מהדיווח האחרון: <a href={item.image_article_url || item.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{names[item.image_source]||item.image_source}</a> · {timestamp(item.image_published_at)}</p>}
       </div>
     </div>
-  </article>;
+  </article>}</ArticlePreview>;
 }
 export default function Home() {
   const [category,setCategory] = useState('all');
@@ -62,6 +65,7 @@ export default function Home() {
     const controller = new AbortController();
     generation.current++; setLoading(true); setError(''); setFeed(null); setPage(1);
     async function fetchFeed(initial:boolean) {
+      if(!initial && document.querySelector('dialog[open]')) return;
       try {
         const response = await fetch(`/api/news?category=${category}&page=1`,{signal:controller.signal});
         if (!response.ok) throw new Error('החדשות אינן זמינות כרגע. אפשר לנסות שוב.');
@@ -116,6 +120,7 @@ export default function Home() {
         </nav>
       </div>
     </header>
+    <FlashBar />
     <div id="news-feed" className="mx-auto max-w-7xl scroll-mt-40 px-3 py-4 sm:px-6 sm:py-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400" aria-live="polite">
         <span>{feed ? `עדכון אחרון: ${timestamp(feed.fetched_at)} · מקורות זמינים: ${activeSources.map(s=>names[s]||s).join(', ')}` : 'טוען כותרות מהמקורות…'}</span>
