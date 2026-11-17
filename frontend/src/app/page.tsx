@@ -7,8 +7,8 @@ import FlashBar from '@/components/FlashBar';
 import type { Story as Article } from '@/lib/stories';
 type Source = { source: string; status: string; count: number };
 type Feed = { data: Article[]; has_more: boolean; fetched_at: string; sources: Source[]; multi_source_total: number };
-const categories = [['all','הכל'],['politics','פוליטיקה'],['business','עסקים'],['technology','טכנולוגיה'],['sports','ספורט'],['entertainment','בידור'],['health','בריאות'],['science','מדע']];
-const names: Record<string,string> = {ynet:'ynet',walla:'וואלה',mako:'mako',haaretz:'הארץ',n12:'N12'};
+const categories = [['all','הכל'],['politics','פוליטיקה'],['business','עסקים'],['technology','חדשות טכנולוגיה'],['sports','ספורט'],['entertainment','בידור'],['health','בריאות'],['science','מדע']];
+const names: Record<string,string> = {ynet:'ynet',walla:'וואלה',mako:'mako',haaretz:'הארץ',n12:'N12',geektime:'גיקטיים'};
 
 function timestamp(value: string | null) {
   if (!value || !Number.isFinite(Date.parse(value))) return 'זמן הפרסום לא זמין';
