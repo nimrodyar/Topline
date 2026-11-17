@@ -2,50 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-bg text-text font-main;
-}
-
-/* Custom scrollbar for better mobile experience */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #222b38;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #3ED6C1;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #2bb6a1;
-}
-
-/* Mobile-first typography */
-@media (max-width: 768px) {
-  html {
-    font-size: 16px;
-  }
-  
-  h1 {
-    font-size: 1.75rem;
-  }
-  
-  h2 {
-    font-size: 1.5rem;
-  }
-  
-  p {
-    font-size: 1rem;
-    line-height: 1.6;
-  }
-}
-
-/* Smooth scrolling */
-html {
-  scroll-behavior: smooth;
-} 
+body { @apply bg-bg text-text font-main; margin: 0; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+* { box-sizing: border-box; }
+a, button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+a:focus-visible, button:focus-visible { outline: 2px solid #3ed6c1; outline-offset: 4px; }
+h1, h2, p, a { overflow-wrap: anywhere; }
+.category-scroll { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.category-scroll::-webkit-scrollbar { display: none; }
+.updates-dialog::backdrop { background: rgb(0 0 0 / 65%); backdrop-filter: blur(3px); }
+.updates-dialog { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)); }
+.quick-updates-trigger { bottom: max(1rem, env(safe-area-inset-bottom)); }
+body:has(dialog[open]) { overflow: hidden; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #222b38; }
+::-webkit-scrollbar-thumb { background: #3ed6c1; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
