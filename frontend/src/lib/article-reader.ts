@@ -1,6 +1,6 @@
 import { load } from 'cheerio';
 export type ReaderContent = {title:string;url:string;summary:string[];paragraphs:string[];limited:boolean;truncated:boolean;print_url:string|null;word_count:number};
-const domains=['ynet.co.il','walla.co.il','mako.co.il','n12.co.il','haaretz.co.il'];
+const domains=['ynet.co.il','walla.co.il','mako.co.il','n12.co.il','haaretz.co.il','geektime.co.il'];
 export function publisherUrl(input:string,base?:string) {
   try {const url=new URL(input,base);if(url.protocol!=='https:'||url.port||url.username||url.password||!domains.some(d=>url.hostname===d||url.hostname.endsWith('.'+d))) return null;url.hash='';return url.toString();}catch{return null;}
 }
