@@ -18,6 +18,7 @@ const sources: Source[] = [
   { name: 'mako', feed: 'https://rcs.mako.co.il/rss/news-money.xml', page: 'https://www.mako.co.il/finances', category: 'business' },
   { name: 'mako', feed: 'https://rcs.mako.co.il/rss/cd0c4e8fc83b8310VgnVCM2000002a0c10acRCRD.xml', page: 'https://www.mako.co.il/nexter', category: 'technology' },
   { name: 'haaretz', feed: 'https://www.haaretz.co.il/srv/htz---all-articles', page: 'https://www.haaretz.co.il/' },
+  { name: 'geektime', feed: 'https://www.geektime.co.il/feed/', page: 'https://www.geektime.co.il/', category: 'technology' },
   { name: 'n12', page: 'https://www.n12.co.il/' },
 ];
 const categories = ['all','general','politics','business','technology','sports','entertainment','health','science'];
@@ -30,7 +31,7 @@ const keywords: Record<string, RegExp> = {
   entertainment: /בידור|תרבות|זמר|שחקנית|סלב|מוזיקה|סדרה/,
   politics: /ממשלה|כנסת|בחירות|שר הביטחון|ראש הממשלה|נתניהו|פוליטי/,
 };
-const parser = new Parser({ customFields: { item: [['media:content','media', { keepArray: true }], ['media:thumbnail','thumbnails', { keepArray: true }]] } });
+const parser = new Parser({ customFields: { item: [['content:encoded','encoded'], ['media:content','media', { keepArray: true }], ['media:thumbnail','thumbnails', { keepArray: true }]] } });
 function text(value: string) { const $=load(value);$('script,style').remove();return $.text().replace(/\s+/g,' ').trim(); }
 function safeUrl(value: unknown, base: string): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
@@ -56,7 +57,7 @@ function publisherUrl(value: unknown, source: Source) {
   const url = safeUrl(value, source.page);
   if (!url) return null;
   const host = new URL(url).hostname;
-  return ['ynet.co.il','walla.co.il','mako.co.il','n12.co.il','haaretz.co.il'].some(domain => host === domain || host.endsWith('.' + domain)) ? url : null;
+  return ['ynet.co.il','walla.co.il','mako.co.il','n12.co.il','haaretz.co.il','geektime.co.il'].some(domain => host === domain || host.endsWith('.' + domain)) ? url : null;
 }
 async function download(url: string) {
   const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8500), headers: { 'User-Agent': '10TEN-News/1.0 (+https://www.10ten.news)', Accept: 'application/rss+xml, application/atom+xml, text/xml, text/html' } });
@@ -78,7 +79,7 @@ async function rss(source: Source): Promise<Article[]> {
     const url = publisherUrl(entry.link, source); const title = text(entry.title || '');
     if (!url || title.length < 8) return [];
     const custom = entry as typeof entry & { media?: { $?: { url?: string } }[]; thumbnails?: { $?: { url?: string } }[] };
-    const image = custom.media?.[0]?.$?.url || custom.thumbnails?.[0]?.$?.url || (entry.enclosure?.type?.startsWith('image/') ? entry.enclosure.url : null) || load(entry.content || entry.summary || '')('img').first().attr('src');
+    const image = custom.media?.[0]?.$?.url || custom.thumbnails?.[0]?.$?.url || (entry.enclosure?.type?.startsWith('image/') ? entry.enclosure.url : null) || load(entry.encoded || entry.content || entry.summary || '')('img').first().attr('src');
     return [{ title, url, description: text(entry.contentSnippet || entry.summary || entry.content || '').slice(0,1600), source: source.name, image_url: safeUrl(image, source.page), published_at: date(entry.isoDate || entry.pubDate), category: category(title,source.category), type: source.updates ? 'update' : 'rss' }];
   });
 }
@@ -105,7 +106,10 @@ async function scrape(source: Source): Promise<Article[]> {
   });
   $('a[href]').each((_, anchor) => {
     const el = $(anchor); const url = publisherUrl(el.attr('href'), source);
-    if (!url || !/\/article\/|\/item\/|\/Article-|\/ty-article\//i.test(new URL(url).pathname)) return;
+    if (!url) return;
+    const path = new URL(url).pathname;
+    const geektimeArticle = source.name === 'geektime' && /^\/[a-z0-9]+(?:-[a-z0-9]+)+\/?$/i.test(path) && el.find('h2,h3,h4').length > 0;
+    if (!geektimeArticle && !/\/article\/|\/item\/|\/Article-|\/ty-article\//i.test(path)) return;
     const heading = el.find('h1,h2,h3,h4').first().text();
     const title = text(heading || el.attr('title') || el.text());
     if (title.length < 12 || title.length > 220) return;
@@ -147,7 +151,7 @@ const aggregate = unstable_cache(async () => {
     } catch { /* Keep an honest no-image fallback. */ }
   }));
   return {data:stories,sources:results.map(({data:_,...result})=>result),fetched_at:new Date().toISOString(),article_total:data.length,multi_source_total:stories.filter(story=>story.source_count>1).length};
-}, ['10ten-aggregator-stories-v2'], { revalidate: 120 });
+}, ['10ten-aggregator-stories-v3-geektime'], { revalidate: 120 });
 
 export async function GET(request: NextRequest) {
   const endpoint = request.nextUrl.pathname.split('/').filter(Boolean)[1];
