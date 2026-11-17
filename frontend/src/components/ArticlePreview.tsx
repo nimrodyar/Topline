@@ -28,6 +28,8 @@ export default function ArticlePreview({story,children,hoverPreview=true}:{story
    {error&&<p className="mt-3 text-sm text-gray-400">{error}</p>}
    <button onClick={show} className="mt-5 min-h-12 w-full rounded-full bg-accent px-5 py-3 font-bold text-bg">פתיחת הכתבה לקריאה</button>
    <a href={story.url} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-11 items-center text-accent underline">לכתבה באתר המקור ↗</a>
+   {!!content?.paragraphs.length&&<section className="mt-5 border-t border-white/15 pt-5"><h4 className="mb-3 font-bold text-accent">תוכן הכתבה</h4><div className="space-y-4 text-base leading-8 text-gray-200">{content.paragraphs.map((p,i)=><p key={i}>{p}</p>)}</div></section>}
+   {content?.print_url&&<a href={content.print_url} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-11 items-center text-accent underline">גרסת הדפסה / PDF באתר המקור ↗</a>}
   </section>}
   <dialog ref={dialog} aria-label="קריאת הכתבה" onCancel={()=>setOpen(false)} onClose={()=>setOpen(false)} className="reader-dialog fixed inset-x-0 bottom-0 top-auto m-0 max-h-[92dvh] w-full max-w-none overflow-y-auto overscroll-contain rounded-t-3xl border border-accent/30 bg-[#182230] p-0 text-text shadow-2xl sm:inset-0 sm:m-auto sm:max-h-[90dvh] sm:max-w-3xl sm:rounded-2xl">
    <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-[#182230]/95 px-5 py-3 backdrop-blur"><span className="text-sm font-bold text-accent">קריאה נוחה · {story.source}</span><button onClick={()=>setOpen(false)} aria-label="סגירת הכתבה" className="min-h-11 min-w-11 rounded-full border border-white/20 text-xl">×</button></div>
