@@ -5,7 +5,9 @@ import { Providers } from "./providers"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata = {
-  title: '10Ten News IL',
+  metadataBase: new URL('https://www.10ten.news'),
+  alternates: { canonical: '/' },
+  title: '10TEN — חדשות בכמה מקורות',
   description: 'Your source for the latest news from Israel',
   icons: {
     icon: [

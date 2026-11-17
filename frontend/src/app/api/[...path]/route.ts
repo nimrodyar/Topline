@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import Parser from 'rss-parser';
 import { load } from 'cheerio';
+import { Article, buildStories } from '@/lib/stories';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-type Article = { title: string; url: string; source: string; image_url: string | null; published_at: string | null; category: string; type: string };
 type Source = { name: string; feed?: string; page: string; category?: string; updates?: boolean };
 const sources: Source[] = [
   { name: 'ynet', feed: 'https://www.ynet.co.il/Integration/StoryRss2.xml', page: 'https://www.ynet.co.il/news' },
@@ -31,13 +31,16 @@ const keywords: Record<string, RegExp> = {
   politics: /ממשלה|כנסת|בחירות|שר הביטחון|ראש הממשלה|נתניהו|פוליטי/,
 };
 const parser = new Parser({ customFields: { item: [['media:content','media', { keepArray: true }], ['media:thumbnail','thumbnails', { keepArray: true }]] } });
-function text(value: string) { return load(value).text().replace(/\s+/g,' ').trim(); }
+function text(value: string) { const $=load(value);$('script,style').remove();return $.text().replace(/\s+/g,' ').trim(); }
 function safeUrl(value: unknown, base: string): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
   try {
     const url = new URL(value, base);
     if (!['http:','https:'].includes(url.protocol) || url.username || url.password) return null;
     url.hash = '';
+    if(url.hostname==='img.haarets.co.il' && url.searchParams.has('width') && Number(url.searchParams.get('width'))<600) {
+      url.searchParams.set('width','960');url.searchParams.set('height','540');
+    }
     for (const key of Array.from(url.searchParams.keys())) if (/^utm_|^(fbclid|gclid|partner|ref)$/i.test(key)) url.searchParams.delete(key);
     return url.toString();
   } catch { return null; }
@@ -56,7 +59,7 @@ function publisherUrl(value: unknown, source: Source) {
   return ['ynet.co.il','walla.co.il','mako.co.il','n12.co.il','haaretz.co.il'].some(domain => host === domain || host.endsWith('.' + domain)) ? url : null;
 }
 async function download(url: string) {
-  const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8500), headers: { 'User-Agent': '10TEN-News/1.0 (+https://10ten.online)', Accept: 'application/rss+xml, application/atom+xml, text/xml, text/html' } });
+  const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8500), headers: { 'User-Agent': '10TEN-News/1.0 (+https://www.10ten.news)', Accept: 'application/rss+xml, application/atom+xml, text/xml, text/html' } });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const reader = response.body?.getReader();
   if (!reader) throw new Error('Empty response');
@@ -76,7 +79,7 @@ async function rss(source: Source): Promise<Article[]> {
     if (!url || title.length < 8) return [];
     const custom = entry as typeof entry & { media?: { $?: { url?: string } }[]; thumbnails?: { $?: { url?: string } }[] };
     const image = custom.media?.[0]?.$?.url || custom.thumbnails?.[0]?.$?.url || (entry.enclosure?.type?.startsWith('image/') ? entry.enclosure.url : null) || load(entry.content || entry.summary || '')('img').first().attr('src');
-    return [{ title, url, source: source.name, image_url: safeUrl(image, source.page), published_at: date(entry.isoDate || entry.pubDate), category: category(title,source.category), type: source.updates ? 'update' : 'rss' }];
+    return [{ title, url, description: text(entry.contentSnippet || entry.summary || entry.content || '').slice(0,1600), source: source.name, image_url: safeUrl(image, source.page), published_at: date(entry.isoDate || entry.pubDate), category: category(title,source.category), type: source.updates ? 'update' : 'rss' }];
   });
 }
 async function scrape(source: Source): Promise<Article[]> {
@@ -93,7 +96,7 @@ async function scrape(source: Source): Promise<Article[]> {
         const title = typeof item.headline === 'string' ? text(item.headline) : '';
         if (url && title.length >= 8) {
           const image = Array.isArray(item.image) ? item.image[0] : item.image;
-          articles.push({title,url,source:source.name,image_url:safeUrl(typeof image === 'object' && image ? (image as Record<string,unknown>).url : image,source.page),published_at:date(item.datePublished),category:category(title,source.category),type:'listing'});
+          articles.push({title,url,description:typeof item.description==='string'?text(item.description).slice(0,1600):'',source:source.name,image_url:safeUrl(typeof image === 'object' && image ? (image as Record<string,unknown>).url : image,source.page),published_at:date(item.datePublished),category:category(title,source.category),type:'listing'});
         }
         Object.values(item).forEach(walk);
       };
@@ -133,8 +136,18 @@ const aggregate = unstable_cache(async () => {
   });
   // Throwing preserves the previous persistent cache during a total outage.
   if (!data.length) throw new Error('All news sources are unavailable');
-  return {data,sources:results.map(({data:_,...result})=>result),fetched_at:new Date().toISOString()};
-}, ['10ten-aggregator-v1'], { revalidate: 120 });
+  const stories = buildStories(data);
+  // Only enrich missing images on the newest article in visible multi-source stories.
+  // An older report's image is never silently substituted for the newest report.
+  await Promise.all(stories.filter(story=>story.source_count>1 && !story.image_url).slice(0,8).map(async story=>{
+    try {
+      const $=load(await download(story.url));
+      const image=safeUrl($('meta[property="og:image"]').attr('content') || $('meta[name="twitter:image"]').attr('content'),story.url);
+      if(image) {story.image_url=image;story.image_source=story.source;story.image_article_url=story.url;story.image_published_at=story.published_at;}
+    } catch { /* Keep an honest no-image fallback. */ }
+  }));
+  return {data:stories,sources:results.map(({data:_,...result})=>result),fetched_at:new Date().toISOString(),article_total:data.length,multi_source_total:stories.filter(story=>story.source_count>1).length};
+}, ['10ten-aggregator-stories-v2'], { revalidate: 120 });
 
 export async function GET(request: NextRequest) {
   const endpoint = request.nextUrl.pathname.split('/').filter(Boolean)[1];
@@ -147,9 +160,9 @@ export async function GET(request: NextRequest) {
     const result = await aggregate();
     const items = selected === 'all' ? result.data : result.data.filter(item=>item.category===selected);
     const start = (page-1)*20;
-    const response = endpoint === 'health' ? {status:result.sources.some(s=>s.status!=='ok') ? 'degraded' : 'ok',sources:result.sources,fetched_at:result.fetched_at,total:result.data.length}
+    const response = endpoint === 'health' ? {status:result.sources.some(s=>s.status!=='ok') ? 'degraded' : 'ok',sources:result.sources,fetched_at:result.fetched_at,total:result.data.length,article_total:result.article_total,multi_source_total:result.multi_source_total}
       : endpoint === 'aggregate' ? result
-      : {data:endpoint==='trending' ? items.slice(0,5) : items.slice(start,start+20),has_more:start+20<items.length,total:items.length,fetched_at:result.fetched_at,sources:result.sources};
+      : {data:endpoint==='trending' ? items.slice(0,5) : items.slice(start,start+20),has_more:start+20<items.length,total:items.length,multi_source_total:result.multi_source_total,fetched_at:result.fetched_at,sources:result.sources};
     return NextResponse.json(response,{headers:{'Cache-Control':'public, s-maxage=60, stale-while-revalidate=300'}});
   } catch {
     return NextResponse.json({error:'News sources are temporarily unavailable',data:[]},{status:503,headers:{'Cache-Control':'no-store','Retry-After':'60'}});
