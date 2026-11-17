@@ -59,7 +59,7 @@ function publisherUrl(value: unknown, source: Source) {
   return ['ynet.co.il','walla.co.il','mako.co.il','n12.co.il','haaretz.co.il'].some(domain => host === domain || host.endsWith('.' + domain)) ? url : null;
 }
 async function download(url: string) {
-  const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8500), headers: { 'User-Agent': '10TEN-News/1.0 (+https://10ten.online)', Accept: 'application/rss+xml, application/atom+xml, text/xml, text/html' } });
+  const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8500), headers: { 'User-Agent': '10TEN-News/1.0 (+https://www.10ten.news)', Accept: 'application/rss+xml, application/atom+xml, text/xml, text/html' } });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const reader = response.body?.getReader();
   if (!reader) throw new Error('Empty response');
