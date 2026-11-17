@@ -1,87 +1,49 @@
-name: CI/CD Pipeline
-
+name: Validate 10TEN
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
-
+    branches: [main]
+permissions:
+  contents: read
 jobs:
-  test:
+  build-and-smoke:
     runs-on: ubuntu-latest
-    services:
-      redis:
-        image: redis
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
+    defaults:
+      run:
+        working-directory: frontend
     steps:
-    - uses: actions/checkout@v2
-    
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.9'
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r backend/requirements.txt
-        
-    - name: Run tests
-      run: |
-        pytest backend/tests/ --cov=backend --cov-report=xml
-        
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v2
-      with:
-        file: ./coverage.xml
-        fail_ci_if_error: true
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-    
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.9'
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install black isort mypy
-        
-    - name: Run linters
-      run: |
-        black --check backend/
-        isort --check-only backend/
-        mypy backend/
-
-  deploy:
-    needs: [test, lint]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-    - uses: actions/checkout@v2
-    
-    - name: Deploy to Render
-      env:
-        RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-      run: |
-        curl -X POST "https://api.render.com/deploy/srv-xxxxx?key=$RENDER_API_KEY"
-        
-    - name: Deploy to Vercel
-      uses: amondnet/vercel-action@v20
-      with:
-        vercel-token: ${{ secrets.VERCEL_TOKEN }}
-        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-        working-directory: ./frontend 
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Check HTML and API validation
+        run: |
+          node <<'JS'
+          const {spawn} = require('node:child_process');
+          const assert = require('node:assert/strict');
+          const server = spawn(process.execPath, ['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port','3000']);
+          let started = false;
+          const timeout = setTimeout(()=>{server.kill();process.exit(1)},30000);
+          server.stderr.pipe(process.stderr);
+          server.stdout.on('data',async chunk=>{
+            if(started || !chunk.toString().includes('Ready')) return;
+            started=true;
+            try {
+              const html=await (await fetch('http://127.0.0.1:3000')).text();
+              assert.match(html, /lang="he"/); assert.match(html, /dir="rtl"/);
+              const categories=await (await fetch('http://127.0.0.1:3000/api/categories')).json();
+              assert(categories.categories.includes('sports'));
+              for(const path of ['/api/news?page=0','/api/news?category=invalid','/api/news?page=1.5']) {
+                assert.equal((await fetch('http://127.0.0.1:3000'+path)).status,400);
+              }
+              assert.equal((await fetch('http://127.0.0.1:3000/api/unknown')).status,404);
+              console.log('HTML and API smoke checks passed');
+            } catch(error) { console.error(error); process.exitCode=1; }
+            finally { clearTimeout(timeout); server.kill(); }
+          });
+          JS
