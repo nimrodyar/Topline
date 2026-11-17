@@ -13,7 +13,13 @@ function clip(value: string, limit: number) {
 }
 function contribution(article: Article): Contribution {
   const clean=(article.description || '').replace(/\s+/g,' ').trim();
-  const sentence=clean.split(/(?<=[.!?])\s+/).find(part=>tokens(part).length>=5) || clean || article.title;
+  const sentences=clean.split(/(?<=[.!?])\s+/).filter(part=>tokens(part).length>=5);
+  let sentence=sentences.find(part=>part.split(' ').length<=22) || sentences[0] || clean || article.title;
+  if(sentence.split(' ').length>22) {
+    const clauses=sentence.split(/[,;]\s+/);let compact='';
+    for(const clause of clauses) {const next=compact?compact+', '+clause:clause;if(next.split(' ').length>22) break;compact=next;}
+    sentence=compact && tokens(compact).length>=5 ? compact.replace(/[.:;]+$/,'')+'.' : article.title;
+  }
   return {text:clip(sentence,22),source:article.source,url:article.url};
 }
 export function buildStories(articles: Article[]): Story[] {
