@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-type Source = { name: string; feed?: string; page: string; category?: string; updates?: boolean };
+type Source = { name: string; feed?: string; fallbackFeed?: string; page: string; category?: string; updates?: boolean };
 const sources: Source[] = [
   { name: 'ynet', feed: 'https://www.ynet.co.il/Integration/StoryRss2.xml', page: 'https://www.ynet.co.il/news' },
   { name: 'ynet', feed: 'https://www.ynet.co.il/Integration/StoryRss1854.xml', page: 'https://www.ynet.co.il/news/category/184', updates: true },
@@ -18,7 +18,7 @@ const sources: Source[] = [
   { name: 'mako', feed: 'https://rcs.mako.co.il/rss/news-money.xml', page: 'https://www.mako.co.il/finances', category: 'business' },
   { name: 'mako', feed: 'https://rcs.mako.co.il/rss/cd0c4e8fc83b8310VgnVCM2000002a0c10acRCRD.xml', page: 'https://www.mako.co.il/nexter', category: 'technology' },
   { name: 'haaretz', feed: 'https://www.haaretz.co.il/srv/htz---all-articles', page: 'https://www.haaretz.co.il/' },
-  { name: 'geektime', feed: 'https://www.geektime.co.il/feed/', page: 'https://www.geektime.co.il/', category: 'technology' },
+  { name: 'geektime', feed: 'https://www.geektime.co.il/rss', fallbackFeed: 'https://feeds.feedburner.com/newsgeekfeed', page: 'https://www.geektime.co.il/', category: 'technology' },
   { name: 'n12', page: 'https://www.n12.co.il/' },
 ];
 const categories = ['all','general','politics','business','technology','sports','entertainment','health','science'];
@@ -74,7 +74,12 @@ async function download(url: string) {
 }
 async function rss(source: Source): Promise<Article[]> {
   if (!source.feed) return [];
-  const feed = await parser.parseString(await download(source.feed));
+  let feed;
+  try { feed = await parser.parseString(await download(source.feed)); }
+  catch (error) {
+    if (!source.fallbackFeed) throw error;
+    feed = await parser.parseString(await download(source.fallbackFeed));
+  }
   return feed.items.slice(0,100).flatMap(entry => {
     const url = publisherUrl(entry.link, source); const title = text(entry.title || '');
     if (!url || title.length < 8) return [];
@@ -151,7 +156,7 @@ const aggregate = unstable_cache(async () => {
     } catch { /* Keep an honest no-image fallback. */ }
   }));
   return {data:stories,sources:results.map(({data:_,...result})=>result),fetched_at:new Date().toISOString(),article_total:data.length,multi_source_total:stories.filter(story=>story.source_count>1).length};
-}, ['10ten-aggregator-stories-v3-geektime'], { revalidate: 120 });
+}, ['10ten-aggregator-stories-v4-geektime-rss'], { revalidate: 120 });
 
 export async function GET(request: NextRequest) {
   const endpoint = request.nextUrl.pathname.split('/').filter(Boolean)[1];
