@@ -39,6 +39,12 @@ export function parseArticle(html:string,url:string):ReaderContent {
    }
   }
  }
+ paragraphs=paragraphs.flatMap(paragraph=>{
+  if(paragraph.length<800)return [paragraph];
+  const words=paragraph.split(/\s+/);const chunks:string[]=[];
+  for(let i=0;i<words.length;i+=85)chunks.push(words.slice(i,i+85).join(' '));
+  return chunks;
+ });
  paragraphs=Array.from(new Set(paragraphs)).filter(p=>!/^פרסומת|^כתבות נוספות|^קראו עוד|^הרשמה ל|^הירשמו ל/.test(p));
  const available=paragraphs.join('\n');const truncated=available.length>18000;
  let size=0;paragraphs=paragraphs.filter(p=>{size+=p.length;return size<=18000;});
