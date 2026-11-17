@@ -31,13 +31,16 @@ const keywords: Record<string, RegExp> = {
   politics: /ממשלה|כנסת|בחירות|שר הביטחון|ראש הממשלה|נתניהו|פוליטי/,
 };
 const parser = new Parser({ customFields: { item: [['media:content','media', { keepArray: true }], ['media:thumbnail','thumbnails', { keepArray: true }]] } });
-function text(value: string) { return load(value).text().replace(/\s+/g,' ').trim(); }
+function text(value: string) { const $=load(value);$('script,style').remove();return $.text().replace(/\s+/g,' ').trim(); }
 function safeUrl(value: unknown, base: string): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
   try {
     const url = new URL(value, base);
     if (!['http:','https:'].includes(url.protocol) || url.username || url.password) return null;
     url.hash = '';
+    if(url.hostname==='img.haarets.co.il' && url.searchParams.has('width') && Number(url.searchParams.get('width'))<600) {
+      url.searchParams.set('width','960');url.searchParams.set('height','540');
+    }
     for (const key of Array.from(url.searchParams.keys())) if (/^utm_|^(fbclid|gclid|partner|ref)$/i.test(key)) url.searchParams.delete(key);
     return url.toString();
   } catch { return null; }
